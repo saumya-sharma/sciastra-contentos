@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Tailwind v4: enable dark mode via .dark class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light mode overrides when .dark is NOT on <html> */
+:root:not(.dark) {
+    --color-background: #f1f5f9;
+    --color-foreground: #0f172a;
+    --color-surface: #ffffff;
+    --color-surface-hover: #e2e8f0;
+}
+
+
 @theme {
     --color-background: #0F172A; /* Restored deep navy */
     --color-foreground: #F8FAFC;

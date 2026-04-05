@@ -15,7 +15,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Runs before React hydrates — prevents dark/light flash */}
+        <script dangerouslySetInnerHTML={{__html: `
+          (function() {
+            try {
+              var theme = localStorage.getItem('sa_theme') || 'dark';
+              document.documentElement.classList.toggle('dark', theme === 'dark');
+            } catch(e) {}
+          })();
+        `}} />
+      </head>
       <body className={`${inter.className} bg-[var(--color-background)] text-slate-100 min-h-screen sidebar-layout`} suppressHydrationWarning>
         {children}
       </body>

@@ -30,6 +30,7 @@ export default function ContentOS() {
     const [activeTab, setActiveTab] = useState('pipeline');
     const [reportDate, setReportDate] = useState('');
     const [isDark, setIsDark] = useState(true);
+    const [mounted, setMounted] = useState(false);
     
     // Auth & Roles
     const [role, setRole] = useState<string | null>(null);
@@ -85,6 +86,8 @@ export default function ContentOS() {
         
         // Background Cron run (Demo)
         fetch('/api/cron').catch(() => {});
+        // Signal client is ready — unblocks login screen render
+        setMounted(true);
     }, []);
 
     const toggleDarkMode = () => {
@@ -242,6 +245,9 @@ export default function ContentOS() {
              .filter(e => e.days >= 0)
              .sort((a,b) => a.days - b.days).slice(0, 3);
     }, [items]);
+
+    // Don't render login UI on server — avoids hydration mismatch from localStorage reads
+    if (!mounted) return null;
 
     if (!role) {
         const smmMembers = team.filter(t => t.role === 'SMM' && t.active !== false);
