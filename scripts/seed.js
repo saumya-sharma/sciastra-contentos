@@ -121,18 +121,25 @@ try {
                     
                     const lower = content.toLowerCase();
                     
+                    // Campaign ID matching: keyword-based patterns, most-specific first
+                    const CAMPAIGN_KEYWORDS = [
+                        { kws: ['homi eng campaign 2','homi english campaign 2','scholarship test'], camp: 'Homi Campaign 2' },
+                        { kws: ['homi eng campaign 1','homi english campaign 1','homi orientation','free homi english','homi eng orient'], camp: 'Homi Campaign 1' },
+                        { kws: ['homi hindi campaign 2','homi hin campaign 2'], camp: 'Homi Campaign 2' },
+                        { kws: ['homi hindi campaign 1','homi hindi orient','free homi hindi','homi hindi cam'], camp: 'Homi Campaign 1' },
+                        { kws: ['vikram campaign 2','vikram cam 2'], camp: 'Vikram Campaign 2' },
+                        { kws: ['vikram campaign 1','vikram orient','free vikram','vikram cam 1'], camp: 'Vikram Campaign 1' },
+                        { kws: ['rescue series','rescue orient','rescue end','bs chem','bs physic','bs maths','bs bio','backlog series bio','launch real offline'], camp: 'Rescue Series' },
+                        { kws: ['backlog series','2000 app'], camp: 'Backlog Series' },
+                        { kws: ['maha revision','strategy for iat','strategy for nest','30 days strategy'], camp: 'Maha Revision Series' },
+                    ];
                     let campaignLabelId = null;
-                    const explicitMatch = CAMPAIGNS_LIST.find(c => lower.includes(c.name.toLowerCase()));
-                    
-                    if (explicitMatch) {
-                        campaignLabelId = explicitMatch.id;
-                        activeCampaigns[chObj.name] = explicitMatch.id; 
-                    } else if (lower.includes('campaign') || lower.includes('series') || lower.includes('day ')) {
-                        if (activeCampaigns[chObj.name]) {
-                            campaignLabelId = activeCampaigns[chObj.name];
+                    const lowerContent = content.toLowerCase();
+                    for (const ck of CAMPAIGN_KEYWORDS) {
+                        if (ck.kws.some(kw => lowerContent.includes(kw))) {
+                            const found = CAMPAIGNS_LIST.find(c => c.name === ck.camp);
+                            if (found) { campaignLabelId = found.id; break; }
                         }
-                    } else {
-                        activeCampaigns[chObj.name] = null;
                     }
 
                     // Primary key: title + date + channel (prevents same item in same channel twice)

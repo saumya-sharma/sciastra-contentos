@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 
 type AuditLog = { user: string; action: string; timestamp: string };
 type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; };
@@ -28,6 +28,8 @@ export default function ContentOS() {
     const [config, setConfig] = useState({ hasWatiKey: false });
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('pipeline');
+    const [reportDate, setReportDate] = useState('');
+    const [isDark, setIsDark] = useState(true);
     
     // Auth & Roles
     const [role, setRole] = useState<string | null>(null);
@@ -59,6 +61,17 @@ export default function ContentOS() {
                 localStorage.setItem('sa_tutorial_seen', 'true');
             }
         }
+        // Dark mode from localStorage
+        const savedTheme = localStorage.getItem('sa_theme');
+        if (savedTheme === 'light') {
+            document.documentElement.classList.remove('dark');
+            setIsDark(false);
+        } else {
+            document.documentElement.classList.add('dark');
+            setIsDark(true);
+        }
+        // Fix hydration: set date client-side only
+        setReportDate(new Date().toLocaleDateString());
 
         fetch('/api/db').then(res => res.json()).then(data => {
             setItems(data.items || []);
@@ -72,6 +85,18 @@ export default function ContentOS() {
         // Background Cron run (Demo)
         fetch('/api/cron').catch(() => {});
     }, []);
+
+    const toggleDarkMode = () => {
+        const newDark = !isDark;
+        setIsDark(newDark);
+        if (newDark) {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('sa_theme', 'dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('sa_theme', 'light');
+        }
+    };
 
     const login = (roleType: string, name: string, tab: string) => {
         localStorage.setItem('sa_role', roleType);
@@ -276,10 +301,10 @@ export default function ContentOS() {
                 <aside className="w-64 bg-[#0B1121] border-r border-slate-800 flex flex-col hidden md:flex z-10 transition-all">
                     <div className="p-6">
                         <div className="flex items-center gap-2 mb-1">
-                             <div className="w-8 h-8 rounded-lg bg-[#639922] flex items-center justify-center font-bold text-white shadow shadow-[#639922]/20">S</div>
-                             <h1 className="text-2xl font-black tracking-tighter uppercase whitespace-nowrap">SciAstra<span className="text-[#639922] opacity-80">OS</span></h1>
+                             <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" width={130} className="object-contain" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).insertAdjacentHTML('afterend','<span class="text-2xl font-black tracking-tighter uppercase">SciAstra</span>');}} />
+                             <span className="text-xs font-black bg-[#639922] text-white px-1.5 py-0.5 rounded-md leading-none ml-1">OS</span>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-medium tracking-wide mb-2">Content Operations Hub</p>
+                        <p className="text-[10px] text-slate-500 font-medium tracking-wide mb-2">Content Hub</p>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
                             {role} | {userName.split(' ')[0]}
                         </div>
@@ -306,7 +331,16 @@ export default function ContentOS() {
                         <button onClick={logout} className="text-xs text-slate-500 hover:text-red-400 transition flex items-center justify-between">
                             Switch Identity <span>→</span>
                         </button>
-                        <button onClick={() => {setShowTutorial(true); setTutorialStep(1);}} className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 font-bold hover:text-white hover:bg-slate-700 transition flex items-center justify-center">?</button>
+                        <div className="flex items-center gap-1.5">
+                            <button onClick={toggleDarkMode} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'} className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition flex items-center justify-center">
+                                {isDark ? (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                                ) : (
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                                )}
+                            </button>
+                            <button onClick={() => {setShowTutorial(true); setTutorialStep(1);}} className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 font-bold hover:text-white hover:bg-slate-700 transition flex items-center justify-center">?</button>
+                        </div>
                     </div>
                 </aside>
 
@@ -400,21 +434,43 @@ export default function ContentOS() {
                                     </div>
                                 )}
 
-                                {activeTab === 'calendar' && viewMode === 'week' && (
+                                {activeTab === 'calendar' && viewMode === 'week' && (() => {
+                                    const WEEK_DAYS = [{label:'Mon Apr 5',iso:'2026-04-05'},{label:'Tue Apr 6',iso:'2026-04-06'},{label:'Wed Apr 7',iso:'2026-04-07'},{label:'Thu Apr 8',iso:'2026-04-08'},{label:'Fri Apr 9',iso:'2026-04-09'},{label:'Sat Apr 10',iso:'2026-04-10'},{label:'Sun Apr 11',iso:'2026-04-11'}];
+                                    const examsByDate: Record<string, string[]> = {};
+                                    items.filter(i => i.type === 'Exam').forEach(e => {
+                                        if (!examsByDate[e.date]) examsByDate[e.date] = [];
+                                        examsByDate[e.date].push(e.title);
+                                    });
+                                    return (
                                    <div className="overflow-x-auto h-full">
                                         <div className="min-w-[1000px] bg-[var(--color-surface)] border border-slate-800 rounded-xl">
+                                            {/* Header row */}
                                             <div className="grid grid-cols-[150px_repeat(7,_1fr)] border-b border-slate-800 bg-slate-900/50">
                                                 <div className="p-3 font-bold text-slate-500 border-r border-slate-800 text-xs text-center uppercase tracking-wider">Channel</div>
-                                                {[{label:'Mon Apr 5',iso:'2026-04-05'},{label:'Tue Apr 6',iso:'2026-04-06'},{label:'Wed Apr 7',iso:'2026-04-07'},{label:'Thu Apr 8',iso:'2026-04-08'},{label:'Fri Apr 9',iso:'2026-04-09'},{label:'Sat Apr 10',iso:'2026-04-10'},{label:'Sun Apr 11',iso:'2026-04-11'}].map(d => (
+                                                {WEEK_DAYS.map(d => (
                                                     <div key={d.iso} className="p-3 font-bold text-center border-r border-slate-800 text-xs text-slate-300">{d.label}</div>
                                                 ))}
                                             </div>
+                                            {/* Exam banner row — spans all columns for dates that have exams */}
+                                            {WEEK_DAYS.some(d => examsByDate[d.iso]?.length > 0) && (
+                                                <div className="grid grid-cols-[150px_repeat(7,_1fr)] border-b border-red-900/40 bg-red-950/30">
+                                                    <div className="p-2 border-r border-red-900/30 text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center">🗓 Exams</div>
+                                                    {WEEK_DAYS.map(d => (
+                                                        <div key={d.iso} className="border-r border-red-900/30 p-1.5 min-h-[36px]">
+                                                            {(examsByDate[d.iso] || []).map((ex, i) => (
+                                                                <div key={i} className="text-[9px] text-red-300 font-bold bg-red-900/40 border border-red-700/30 rounded px-1.5 py-0.5 mb-0.5 leading-tight truncate" title={ex}>{ex.length > 30 ? ex.substring(0,30)+'…' : ex}</div>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {/* Channel content rows */}
                                             {CHANNELS.filter(c=>c.name!=='Exams').map(ch => (
                                                 <div key={ch.name} className="grid grid-cols-[150px_repeat(7,_1fr)] border-b border-slate-800/50 hover:bg-slate-800/20 transition">
                                                     <div className={`p-4 border-r border-slate-800 text-xs font-bold ${getBorderClass(ch.name)} border-l-4 flex items-center`}>
                                                         {ch.name}
                                                     </div>
-                                                    {[{label:'Mon Apr 5',iso:'2026-04-05'},{label:'Tue Apr 6',iso:'2026-04-06'},{label:'Wed Apr 7',iso:'2026-04-07'},{label:'Thu Apr 8',iso:'2026-04-08'},{label:'Fri Apr 9',iso:'2026-04-09'},{label:'Sat Apr 10',iso:'2026-04-10'},{label:'Sun Apr 11',iso:'2026-04-11'}].map(d => {
+                                                    {WEEK_DAYS.map(d => {
                                                         const matched = visibleItems.filter(i => i.channel === ch.name && i.date === d.iso);
                                                         return (
                                                             <div key={d.iso} className="border-r border-slate-800/50 p-2 relative min-h-[80px] group hover:bg-slate-700/30 transition">
@@ -423,7 +479,6 @@ export default function ContentOS() {
                                                                         <span title={m.title}>{m.title.length > 35 ? m.title.substring(0, 35) + '...' : m.title}</span>
                                                                     </div>
                                                                 ))}
-                                                                {/* + button always visible on hover — always appends new card */}
                                                                 <div onClick={() => setSelectedItem({ id: 'new', title: '', type: 'Content', channel: ch.name, date: d.iso, status: 'Ideation', assignees: { smm: userName, editor: '', designer: '' } })} className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 text-sm text-slate-500 font-light hover:text-[#639922] hover:bg-slate-700 rounded transition cursor-pointer">+</div>
                                                             </div>
                                                         )
@@ -432,7 +487,8 @@ export default function ContentOS() {
                                             ))}
                                         </div>
                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {activeTab === 'calendar' && viewMode === 'month' && (
                                    <div className="overflow-x-auto h-full">
@@ -701,7 +757,7 @@ export default function ContentOS() {
                                          <div className="flex justify-between items-start mb-10 pb-6 border-b border-slate-800">
                                               <div>
                                                   <h2 className="text-2xl font-black uppercase tracking-tighter">SciAstra Weekly Report</h2>
-                                                  <p className="text-slate-400 text-sm mt-1">Automatically generated for Executive Review (<span className="text-slate-200 font-bold">{new Date().toLocaleDateString()}</span>)</p>
+                                                  <p className="text-slate-400 text-sm mt-1">Automatically generated for Executive Review (<span className="text-slate-200 font-bold">{reportDate || '—'}</span>)</p>
                                               </div>
                                               <button onClick={() => {
                                                   // Minimalist native PDF engine via browser print layer
