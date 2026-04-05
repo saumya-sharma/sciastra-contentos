@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+    --color-background: #0F172A; /* Restored deep navy */
+    --color-foreground: #F8FAFC;
+    --color-brand-primary: #639922; /* Restored Science Green */
+    --color-brand-secondary: #4d7a18;
+    --color-surface: #1E293B;
+    --color-surface-hover: #334155;
+    
+    --color-channel-vivek: #9333ea;
+    --color-channel-english: #3b82f6;
+    --color-channel-11th: #fb923c;
+    --color-channel-12th: #22c55e;
+    --color-channel-college: #14b8a6;
+    --color-channel-whatsapp: #25D366;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+.sidebar-layout { display: flex; flex-direction: column; }
+@media (min-width: 768px) { .sidebar-layout { flex-direction: row; } }
