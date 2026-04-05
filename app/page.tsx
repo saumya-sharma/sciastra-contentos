@@ -40,6 +40,7 @@ export default function ContentOS() {
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const [toast, setToast] = useState('');
     const [showOnboardModal, setShowOnboardModal] = useState(false);
+    const [loginStep, setLoginStep] = useState<'role' | 'smm-pick'>('role');
     const [showTutorial, setShowTutorial] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(1);
     const [newMember, setNewMember] = useState({ name: '', role: 'CREATOR', whatsapp: '+91', channels: [] as string[] });
@@ -243,28 +244,54 @@ export default function ContentOS() {
     }, [items]);
 
     if (!role) {
+        const smmMembers = team.filter(t => t.role === 'SMM' && t.active !== false);
+        const creatorMembers = team.filter(t => t.role === 'CREATOR' && t.active !== false);
+        const adminMembers = team.filter(t => t.role === 'ADMIN' && t.active !== false);
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)]">
                 <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl max-w-lg w-full text-center hover:shadow-[#639922]/10 transition-shadow">
                     <h1 className="text-3xl font-black mb-2 tracking-tighter uppercase">SciAstra<span className="text-[#639922]">OS</span></h1>
-                    <p className="text-slate-400 mb-8 text-sm">Select your operating environment.</p>
-                    <div className="space-y-4">
-                        {team.filter(t => t.role === 'ADMIN' && t.active !== false).slice(0,1).map(t => (
-                            <button key={t.id} onClick={() => login('ADMIN', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                <span className="block text-[#639922] font-bold">Admin ({t.name})</span><span>→</span>
-                            </button>
-                        ))}
-                        {team.filter(t => t.role === 'SMM' && t.active !== false).slice(0,1).map(t => (
-                            <button key={t.id} onClick={() => login('SMM', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                <span className="block text-blue-400 font-bold">SMM ({t.name})</span><span>→</span>
-                            </button>
-                        ))}
-                        {team.filter(t => t.role === 'CREATOR' && t.active !== false).slice(0,1).map(t => (
-                            <button key={t.id} onClick={() => login('CREATOR', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                <span className="block text-purple-400 font-bold">Creator ({t.name})</span><span>→</span>
-                            </button>
-                        ))}
-                    </div>
+
+                    {loginStep === 'role' ? (
+                        <>
+                            <p className="text-slate-400 mb-8 text-sm">Who are you?</p>
+                            <div className="space-y-4">
+                                {adminMembers.slice(0,1).map(t => (
+                                    <button key={t.id} onClick={() => login('ADMIN', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
+                                        <span className="block text-[#639922] font-bold">Admin ({t.name})</span><span>→</span>
+                                    </button>
+                                ))}
+                                {smmMembers.length > 0 && (
+                                    <button onClick={() => setLoginStep('smm-pick')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
+                                        <span className="block text-blue-400 font-bold">SMM (Social Media Manager)</span><span>→</span>
+                                    </button>
+                                )}
+                                {creatorMembers.slice(0,1).map(t => (
+                                    <button key={t.id} onClick={() => login('CREATOR', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
+                                        <span className="block text-purple-400 font-bold">Creator / Editor ({t.name})</span><span>→</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-slate-400 mb-2 text-sm">Select your SMM identity</p>
+                            <p className="text-slate-600 mb-6 text-xs">Your content queue will filter to your assigned channels.</p>
+                            <div className="space-y-3">
+                                {smmMembers.map(t => (
+                                    <button key={t.id} onClick={() => login('SMM', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-[#0d2242] border border-blue-900/50 p-4 rounded-xl flex items-center gap-4 transition">
+                                        <div className="w-10 h-10 rounded-full bg-blue-900 flex items-center justify-center font-black text-blue-300 text-lg">{t.name.charAt(0)}</div>
+                                        <div className="text-left">
+                                            <div className="font-bold text-blue-300 text-sm">{t.name}</div>
+                                            <div className="text-slate-500 text-xs">{t.channels?.join(', ') || 'All channels'}</div>
+                                        </div>
+                                        <span className="ml-auto text-slate-500">→</span>
+                                    </button>
+                                ))}
+                                <button onClick={() => setLoginStep('role')} className="text-xs text-slate-600 hover:text-slate-400 transition mt-2">← Back</button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
         );
@@ -997,21 +1024,44 @@ export default function ContentOS() {
                                         </div>
                                     </div>
 
+                                    {/* Campaign field with Standalone option */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Campaign</label>
+                                        <select
+                                            value={selectedItem.campaignId || ''}
+                                            onChange={(e) => updateItem(selectedItem, { campaignId: e.target.value || undefined })}
+                                            className="w-full bg-[var(--color-surface)] border border-slate-700 text-white rounded-lg p-2.5 text-sm font-bold outline-none focus:border-[#639922] cursor-pointer"
+                                        >
+                                            <option value="">Standalone Post (No Campaign)</option>
+                                            {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+
                                     <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-5 shadow-inner shadow-black/20">
                                         <div className="flex justify-between items-center mb-6">
                                             <label className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${getBgClass(selectedItem.channel).split(' ')[0].replace('/30','')}`}></div> Active Content Brief</label>
                                         </div>
                                         
                                         <div className="space-y-4">
-                                            {selectedItem.channel.includes('English') || selectedItem.channel.includes('Vivek') ? (
+                                            {/* YouTube channels: Title + SEO + Thumbnail */}
+                                            {(selectedItem.channel.includes('English') || selectedItem.channel.includes('Vivek')) ? (
                                                 <>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">YouTube Title</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" defaultValue={selectedItem.title} /></div>
-                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">SEO Description & Links</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-24 text-white custom-scrollbar" placeholder="Download App link..." /></div>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">SEO Description &amp; Links</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-24 text-white custom-scrollbar" placeholder="Download App link..." /></div>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Thumbnail Aesthetic Brief</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="High contrast face of Vivek..." /></div>
                                                 </>
                                             ) : selectedItem.channel.includes('Whatsapp') ? (
+                                                /* WhatsApp: only broadcast copy */
                                                 <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold flex justify-between block"><span>Broadcast Copy</span><span>160 char suggested limit</span></label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-32 text-white custom-scrollbar" placeholder="🚨 Warrior alert! Today we launch..." /></div>
+                                            ) : selectedItem.channel.includes('Ad') ? (
+                                                /* Ad Campaigns: headline + copy + CTA */
+                                                <>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Ad Headline</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="Stop scrolling. IAT in 12 days." /></div>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Ad Copy</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-20 text-white custom-scrollbar" placeholder="Full details about the campaign..." /></div>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">CTA Button Text</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="Enroll Now" /></div>
+                                                </>
                                             ) : (
+                                                /* Instagram/other: Hook + Caption + Hashtags (no SEO) */
                                                 <>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">First 3 Second Hook (Reel)</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="Do you know the secret of NISER?" /></div>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Instagram Caption</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-20 text-white custom-scrollbar" placeholder="Full details below..." /></div>
@@ -1022,18 +1072,26 @@ export default function ContentOS() {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* Assigned SMM — live dropdown from DB */}
                                         <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4">
                                              <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold block text-center">Assigned SMM</label>
-                                             <div className="flex items-center justify-center gap-3">
-                                                 <div className="w-8 h-8 rounded-full bg-blue-900 border border-slate-700 flex items-center justify-center font-bold text-xs">{selectedItem.assignees?.smm?.charAt(0) || '?'}</div>
-                                                 <span className="font-bold text-sm truncate max-w-[100px]">{selectedItem.assignees?.smm || 'None'}</span>
+                                             <div className="flex items-center gap-3">
+                                                 <div className="w-8 h-8 rounded-full bg-blue-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.smm || '?').charAt(0)}</div>
+                                                 <select value={selectedItem.assignees?.smm || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, smm: e.target.value } })} className="flex-1 bg-[#0B1121] border border-slate-800 rounded-lg p-2 text-sm font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
+                                                     <option value="">Unassigned</option>
+                                                     {team.filter(t => t.role === 'SMM' && t.active !== false).map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                                 </select>
                                              </div>
                                         </div>
+                                        {/* Assigned Editor — live dropdown from DB */}
                                         <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4">
                                              <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold block text-center">Assigned Editor</label>
-                                             <div className="flex items-center justify-center gap-3">
-                                                 <div className="w-8 h-8 rounded-full bg-orange-900 border border-slate-700 flex items-center justify-center font-bold text-xs">{selectedItem.assignees?.editor?.charAt(0) || '?'}</div>
-                                                 <span className="font-bold text-sm truncate max-w-[100px]">{selectedItem.assignees?.editor || 'None'}</span>
+                                             <div className="flex items-center gap-3">
+                                                 <div className="w-8 h-8 rounded-full bg-orange-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.editor || '?').charAt(0)}</div>
+                                                 <select value={selectedItem.assignees?.editor || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, editor: e.target.value } })} className="flex-1 bg-[#0B1121] border border-slate-800 rounded-lg p-2 text-sm font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
+                                                     <option value="">Unassigned</option>
+                                                     {team.filter(t => t.role === 'CREATOR' && t.active !== false).map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                                 </select>
                                              </div>
                                         </div>
                                     </div>
