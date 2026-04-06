@@ -33,6 +33,15 @@ export async function PUT(req: Request) {
             return NextResponse.json({ success: true });
         }
 
+        // Create new campaign
+        if (body._action === 'CREATE_CAMPAIGN') {
+            if (!data.campaigns) data.campaigns = [];
+            data.campaigns.push(body.campaign);
+            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+            return NextResponse.json({ success: true, campaign: body.campaign });
+        }
+
+
         const index = data.items.findIndex((i: any) => i.id === body.id);
         if (index !== -1) {
             const item = data.items[index];

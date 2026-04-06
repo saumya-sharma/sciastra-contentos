@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 type AuditLog = { user: string; action: string; timestamp: string };
 type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; };
 type TeamMember = { id: string; name: string; role: string; whatsapp: string; active?: boolean; channels?: string[] };
-type Campaign = { id: string, name: string, target?: string };
+type Campaign = { id: string, name: string, target?: string, exam?: string, startDate?: string, endDate?: string };
 
 const STATUSES = ['Ideation', 'Scripting', 'Sent to Editor', 'Ready to Publish', 'Published'];
 
@@ -56,6 +56,9 @@ export default function ContentOS() {
     // Filters
     const [filterChannel, setFilterChannel] = useState('');
     const [filterCampaign, setFilterCampaign] = useState('');
+    const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
+    const [newCampaignForm, setNewCampaignForm] = useState({ name: '', exam: 'None', target: '', startDate: '', endDate: '' });
+    const [savingCampaign, setSavingCampaign] = useState(false);
 
     useEffect(() => {
         // 1. SYNC: read role was already done by lazy useState initializer above
@@ -110,6 +113,31 @@ export default function ContentOS() {
             localStorage.setItem('sa_theme', 'light');
         }
     };
+
+    const createCampaign = async () => {
+        if (!newCampaignForm.name.trim()) return;
+        setSavingCampaign(true);
+        const newCamp: Campaign = {
+            id: `camp_${Date.now()}`,
+            name: newCampaignForm.name.trim(),
+            target: newCampaignForm.target,
+            exam: newCampaignForm.exam,
+            startDate: newCampaignForm.startDate,
+            endDate: newCampaignForm.endDate,
+        };
+        await fetch('/api/db', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ _action: 'CREATE_CAMPAIGN', campaign: newCamp }),
+        });
+        setCampaigns(prev => [...prev, newCamp]);
+        setShowNewCampaignModal(false);
+        setNewCampaignForm({ name: '', exam: 'None', target: '', startDate: '', endDate: '' });
+        setSavingCampaign(false);
+        setToast(`Campaign "${newCamp.name}" created!`);
+        setTimeout(() => setToast(''), 3000);
+    };
+
 
     const login = (roleType: string, name: string, tab: string) => {
         localStorage.setItem('sa_role', roleType);
@@ -324,6 +352,83 @@ export default function ContentOS() {
                           <span className="relative inline-flex rounded-full h-3 w-3 bg-[#639922]"></span>
                         </span>
                         {toast}
+                    </div>
+                </div>
+            )}
+
+            {/* Create New Campaign Modal */}
+            {showNewCampaignModal && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowNewCampaignModal(false)}>
+                    <div className="bg-[#1E293B] border border-slate-700 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-white font-black text-lg tracking-tight">New Campaign</h2>
+                            <button onClick={() => setShowNewCampaignModal(false)} className="text-slate-400 hover:text-white transition text-xl leading-none">✕</button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block tracking-widest">Campaign Name *</label>
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={newCampaignForm.name}
+                                    onChange={e => setNewCampaignForm(f => ({...f, name: e.target.value}))}
+                                    className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white"
+                                    placeholder="e.g. Homi Campaign 3"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block tracking-widest">Related Exam</label>
+                                    <select
+                                        value={newCampaignForm.exam}
+                                        onChange={e => setNewCampaignForm(f => ({...f, exam: e.target.value}))}
+                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white cursor-pointer"
+                                    >
+                                        {['IAT','NEST','JEE','NEET','ISI','CMI','BITSAT','None'].map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block tracking-widest">Target</label>
+                                    <input
+                                        type="text"
+                                        value={newCampaignForm.target}
+                                        onChange={e => setNewCampaignForm(f => ({...f, target: e.target.value}))}
+                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white"
+                                        placeholder="e.g. 300 leads"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block tracking-widest">Start Date</label>
+                                    <input
+                                        type="date"
+                                        value={newCampaignForm.startDate}
+                                        onChange={e => setNewCampaignForm(f => ({...f, startDate: e.target.value}))}
+                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-400 mb-1.5 block tracking-widest">End Date</label>
+                                    <input
+                                        type="date"
+                                        value={newCampaignForm.endDate}
+                                        onChange={e => setNewCampaignForm(f => ({...f, endDate: e.target.value}))}
+                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-3 mt-6">
+                            <button onClick={() => setShowNewCampaignModal(false)} className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 text-sm font-bold hover:bg-slate-700 transition">Cancel</button>
+                            <button
+                                onClick={createCampaign}
+                                disabled={!newCampaignForm.name.trim() || savingCampaign}
+                                className="flex-1 py-2.5 rounded-lg bg-[#639922] text-white text-sm font-black hover:bg-[#4d7a18] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {savingCampaign ? 'Saving...' : 'Save Campaign'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1039,16 +1144,23 @@ export default function ContentOS() {
                                         </div>
                                     </div>
 
-                                    {/* Campaign field with Standalone option */}
+                                    {/* Campaign field with Standalone option + Create New */}
                                     <div className="space-y-1">
                                         <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Campaign</label>
                                         <select
                                             value={selectedItem.campaignId || ''}
-                                            onChange={(e) => updateItem(selectedItem, { campaignId: e.target.value || undefined })}
+                                            onChange={(e) => {
+                                                if (e.target.value === '__create__') {
+                                                    setShowNewCampaignModal(true);
+                                                } else {
+                                                    updateItem(selectedItem, { campaignId: e.target.value || undefined });
+                                                }
+                                            }}
                                             className="w-full bg-[var(--color-surface)] border border-slate-700 text-white rounded-lg p-2.5 text-sm font-bold outline-none focus:border-[#639922] cursor-pointer"
                                         >
                                             <option value="">Standalone Post (No Campaign)</option>
                                             {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            <option value="__create__">✚ Create New Campaign...</option>
                                         </select>
                                     </div>
 
@@ -1058,12 +1170,12 @@ export default function ContentOS() {
                                         </div>
                                         
                                         <div className="space-y-4">
-                                            {/* YouTube channels: Title + SEO + Thumbnail */}
+                                            {/* YouTube channels: Title + SEO + Thumbnail (YouTube-only) */}
                                             {(selectedItem.channel.includes('English') || selectedItem.channel.includes('Vivek')) ? (
                                                 <>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">YouTube Title</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" defaultValue={selectedItem.title} /></div>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">SEO Description &amp; Links</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-24 text-white custom-scrollbar" placeholder="Download App link..." /></div>
-                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Thumbnail Aesthetic Brief</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="High contrast face of Vivek..." /></div>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Thumbnail Aesthetic Brief</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="Describe the thumbnail style, colors, and key elements..." /></div>
                                                 </>
                                             ) : selectedItem.channel.includes('Whatsapp') ? (
                                                 /* WhatsApp: only broadcast copy */
@@ -1086,26 +1198,40 @@ export default function ContentOS() {
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                         {/* Assigned SMM — live dropdown from DB */}
                                         <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4">
                                              <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold block text-center">Assigned SMM</label>
-                                             <div className="flex items-center gap-3">
-                                                 <div className="w-8 h-8 rounded-full bg-blue-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.smm || '?').charAt(0)}</div>
-                                                 <select value={selectedItem.assignees?.smm || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, smm: e.target.value } })} className="flex-1 bg-[#0B1121] border border-slate-800 rounded-lg p-2 text-sm font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
+                                             <div className="flex items-center gap-2">
+                                                 <div className="w-7 h-7 rounded-full bg-blue-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.smm || '?').charAt(0)}</div>
+                                                 <select value={selectedItem.assignees?.smm || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, smm: e.target.value } })} className="flex-1 min-w-0 bg-[#0B1121] border border-slate-800 rounded-lg p-1.5 text-xs font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
                                                      <option value="">Unassigned</option>
                                                      {team.filter(t => t.role === 'SMM' && t.active !== false).map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
                                                  </select>
                                              </div>
                                         </div>
-                                        {/* Assigned Editor — live dropdown from DB */}
+                                        {/* Assigned Editor — CREATOR role only (not Designer) */}
                                         <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4">
                                              <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold block text-center">Assigned Editor</label>
-                                             <div className="flex items-center gap-3">
-                                                 <div className="w-8 h-8 rounded-full bg-orange-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.editor || '?').charAt(0)}</div>
-                                                 <select value={selectedItem.assignees?.editor || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, editor: e.target.value } })} className="flex-1 bg-[#0B1121] border border-slate-800 rounded-lg p-2 text-sm font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
+                                             <div className="flex items-center gap-2">
+                                                 <div className="w-7 h-7 rounded-full bg-orange-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.editor || '?').charAt(0)}</div>
+                                                 <select value={selectedItem.assignees?.editor || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, editor: e.target.value } })} className="flex-1 min-w-0 bg-[#0B1121] border border-slate-800 rounded-lg p-1.5 text-xs font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
                                                      <option value="">Unassigned</option>
-                                                     {team.filter(t => t.role === 'CREATOR' && t.active !== false).map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                                     {team.filter(t => t.role === 'CREATOR' && t.active !== false && t.name !== 'Bhupendra').map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                                 </select>
+                                             </div>
+                                        </div>
+                                        {/* Assigned Designer — Bhupendra + Vivek K */}
+                                        <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4">
+                                             <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold block text-center">Assigned Designer</label>
+                                             <div className="flex items-center gap-2">
+                                                 <div className="w-7 h-7 rounded-full bg-pink-900 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0">{(selectedItem.assignees?.designer || '?').charAt(0)}</div>
+                                                 <select value={selectedItem.assignees?.designer || ''} onChange={(e) => updateItem(selectedItem, { assignees: { ...selectedItem.assignees, designer: e.target.value } })} className="flex-1 min-w-0 bg-[#0B1121] border border-slate-800 rounded-lg p-1.5 text-xs font-bold text-white outline-none focus:border-[#639922] cursor-pointer">
+                                                     <option value="">Unassigned</option>
+                                                     {team.filter(t => (t.name === 'Bhupendra' || t.name === 'Vivek K') && t.active !== false).map(t => (<option key={t.id} value={t.name}>{t.name}</option>))}
+                                                     {/* Hardcode fallback in case DB doesn't have them yet */}
+                                                     {!team.find(t => t.name === 'Bhupendra') && <option value="Bhupendra">Bhupendra</option>}
+                                                     {!team.find(t => t.name === 'Vivek K') && <option value="Vivek K">Vivek K</option>}
                                                  </select>
                                              </div>
                                         </div>

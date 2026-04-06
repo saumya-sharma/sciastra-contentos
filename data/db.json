@@ -349,7 +349,7 @@
       "channel": "Vivek NISER | SciAstra",
       "date": "2026-04-07",
       "scheduledTime": "19:00",
-      "status": "Ready to Publish",
+      "status": "Published",
       "assignees": {
         "smm": "Vivek",
         "editor": "Atendra",
@@ -359,7 +359,13 @@
       "driveLink": "",
       "notes": "",
       "approval": "Pending",
-      "auditLog": []
+      "auditLog": [
+        {
+          "user": "Vivek",
+          "action": "Moved from Ready to Publish to Published",
+          "timestamp": "2026-04-06T02:26:19.220Z"
+        }
+      ]
     },
     {
       "id": "76c90fb7-e059-4406-a149-9d37d27bbfa6",
@@ -515,7 +521,7 @@
       "type": "Content",
       "channel": "SciAstra 12th",
       "date": "2026-04-09",
-      "status": "Ideation",
+      "status": "Sent to Editor",
       "assignees": {
         "smm": "Mahak",
         "editor": "Rishav",
@@ -525,7 +531,18 @@
       "driveLink": "",
       "notes": "Instagram-specific content for Mahak",
       "approval": "Pending",
-      "auditLog": []
+      "auditLog": [
+        {
+          "user": "Vivek",
+          "action": "Moved from Ideation to Scripting",
+          "timestamp": "2026-04-06T02:26:03.081Z"
+        },
+        {
+          "user": "Vivek",
+          "action": "Moved from Scripting to Sent to Editor",
+          "timestamp": "2026-04-06T02:26:10.643Z"
+        }
+      ]
     },
     {
       "id": "c6d71e9e-179e-47ba-939a-3a281dbd00f0",
@@ -1819,5 +1836,16 @@
       "target": "Final revision before IAT/NEST"
     }
   ],
-  "notifications": []
+  "notifications": [
+    {
+      "id": "41b0b32d-bb3f-466d-b5c9-89d55b9e417e",
+      "recipientName": "Mahak",
+      "whatsappNumber": "+910000000000",
+      "notificationType": "Sent to Editor",
+      "message": "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
+      "taskId": "843bb207-6beb-4967-9619-84df567b81e7",
+      "timestamp": "2026-04-06T02:26:11.599Z",
+      "status": "Sent (Mock)"
+    }
+  ]
 }
