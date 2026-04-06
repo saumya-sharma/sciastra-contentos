@@ -59,6 +59,7 @@ export default function ContentOS() {
     const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
     const [newCampaignForm, setNewCampaignForm] = useState({ name: '', exam: 'None', target: '', startDate: '', endDate: '' });
     const [savingCampaign, setSavingCampaign] = useState(false);
+    const [savedToast, setSavedToast] = useState(false); // "Saved ✓" indicator in drawer
 
     useEffect(() => {
         // 1. SYNC: read role was already done by lazy useState initializer above
@@ -170,12 +171,30 @@ export default function ContentOS() {
         setTimeout(() => setToast(''), 4000);
     };
 
+    const showSavedToast = () => {
+        setSavedToast(true);
+        setTimeout(() => setSavedToast(false), 2000);
+    };
+
     const updateItem = async (item: Item, payloadChanges: Partial<Item>) => {
         if (item.id === 'new') {
+            // Persist new item to DB immediately
             const newId = Math.random().toString(36).substring(7);
-            const newItem = { ...item, ...payloadChanges, id: newId, auditLog: [{ user: userName, action: `Created`, timestamp: new Date().toISOString() }] };
+            const newItem: Item = { 
+                ...item, 
+                ...payloadChanges, 
+                id: newId, 
+                auditLog: [{ user: userName, action: `Created`, timestamp: new Date().toISOString() }] 
+            };
             setItems(prev => [...prev, newItem]);
             setSelectedItem(newItem);
+            // Write to DB so calendar and kanban stay in sync on reload
+            await fetch('/api/db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ _action: 'CREATE_ITEM', item: newItem }),
+            });
+            showSavedToast();
             return;
         }
 
@@ -188,6 +207,7 @@ export default function ContentOS() {
         if (selectedItem?.id === item.id) setSelectedItem({ ...item, ...payloadChanges, auditLog: [...(selectedItem.auditLog||[]), optimisticLog] } as Item);
         
         await fetch('/api/db', { method: 'PUT', body: JSON.stringify(payload) });
+        showSavedToast();
 
         // Trigger Webhook if status hit specific targets
         if (payloadChanges.status === 'Ready to Publish' || payloadChanges.status === 'Sent to Editor') {
@@ -1109,9 +1129,20 @@ export default function ContentOS() {
                                      <input type="time" defaultValue={selectedItem.scheduledTime} onBlur={e => updateItem(selectedItem, {scheduledTime: e.target.value})} className="bg-transparent text-slate-400 text-xs font-mono outline-none hover:text-white transition" />
                                 </div>
                                 <textarea defaultValue={selectedItem.title} onBlur={(e) => updateItem(selectedItem, {title: e.target.value})} className="w-full bg-transparent font-black text-xl md:text-2xl leading-tight resize-none outline-none focus:border-b border-slate-700" rows={2}/>
-                                {selectedItem.campaignId && <span className="text-purple-400 text-xs font-bold uppercase tracking-wider block mt-2">↳ {campaigns.find(c=>c.id===selectedItem.campaignId)?.name || 'Campaign'}</span>}
+                                {selectedItem.campaignId && <span className="text-purple-400 text-xs font-bold uppercase tracking-wider block mt-2">&rarr; {campaigns.find(c=>c.id===selectedItem.campaignId)?.name || 'Campaign'}</span>}
                             </div>
-                            <button onClick={() => setSelectedItem(null)} className="text-slate-500 hover:text-white text-3xl leading-none z-10">&times;</button>
+                            {/* Header actions: Saved indicator + close */}
+                            <div className="flex flex-col items-end gap-2 z-10 shrink-0">
+                                <button onClick={() => setSelectedItem(null)} className="text-slate-500 hover:text-white text-3xl leading-none transition">&times;</button>
+                                <div className={`flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase transition-all duration-300 ${
+                                    savedToast 
+                                        ? 'text-[#639922] opacity-100 translate-y-0' 
+                                        : 'text-transparent opacity-0 translate-y-1'
+                                }`}>
+                                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M1 6l3.5 3.5L11 2" stroke="#639922" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                    Saved
+                                </div>
+                            </div>
                         </header>
                         
                         <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 custom-scrollbar">

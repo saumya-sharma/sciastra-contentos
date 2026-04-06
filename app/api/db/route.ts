@@ -78,3 +78,23 @@ export async function PUT(req: Request) {
     }
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
+
+export async function POST(req: Request) {
+    const dbPath = path.join(process.cwd(), 'data/db.json');
+    const body = await req.json();
+
+    if (!fs.existsSync(dbPath)) {
+        return NextResponse.json({ error: 'DB not found' }, { status: 404 });
+    }
+
+    const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
+
+    if (body._action === 'CREATE_ITEM') {
+        if (!data.items) data.items = [];
+        data.items.push(body.item);
+        fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+        return NextResponse.json({ success: true, item: body.item });
+    }
+
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+}

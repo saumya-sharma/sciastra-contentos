@@ -426,7 +426,7 @@
         "editor": "Manu",
         "designer": "Bhupendra"
       },
-      "campaignId": "64d4d648-efa9-4835-9fd3-97378c3a9bd9",
+      "campaignId": "camp_1775443158908",
       "driveLink": "",
       "notes": "",
       "approval": "Pending",
@@ -1834,6 +1834,14 @@
       "id": "48a11635-c705-4efe-bbb7-25127bec6641",
       "name": "Maha Revision Series",
       "target": "Final revision before IAT/NEST"
+    },
+    {
+      "id": "camp_1775443158908",
+      "name": "Offline Campaign",
+      "target": "100 Enrollments",
+      "exam": "IAT",
+      "startDate": "2026-04-07",
+      "endDate": "2026-04-30"
     }
   ],
   "notifications": [
@@ -1845,6 +1853,16 @@
       "message": "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
       "taskId": "843bb207-6beb-4967-9619-84df567b81e7",
       "timestamp": "2026-04-06T02:26:11.599Z",
+      "status": "Sent (Mock)"
+    },
+    {
+      "id": "7d2114ba-6af4-4c2b-b4a3-b343c07885ad",
+      "recipientName": "Priya",
+      "whatsappNumber": "+919999999999",
+      "notificationType": "Manual Trigger",
+      "message": "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
+      "taskId": "tezidl",
+      "timestamp": "2026-04-06T02:40:25.953Z",
       "status": "Sent (Mock)"
     }
   ]
