@@ -513,11 +513,18 @@ export default function ContentOS() {
             <div className="flex flex-1 overflow-hidden">
                 <aside className="w-64 bg-[#0B1121] border-r border-slate-800 flex flex-col hidden md:flex z-10 transition-all">
                     <div className="p-6">
-                        <div className="flex items-center gap-2 mb-1">
-                             <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" width={130} className="object-contain" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).insertAdjacentHTML('afterend','<span class="text-2xl font-black tracking-tighter uppercase">SciAstra</span>');}} />
-                             <span className="text-xs font-black bg-[#639922] text-white px-1.5 py-0.5 rounded-md leading-none ml-1">OS</span>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 bg-white flex items-center justify-center p-1.5 shadow-sm border border-slate-700">
+                                <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" className="w-full h-full object-contain" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).insertAdjacentHTML('afterend','<span class="text-xs font-black text-slate-800">SA</span>');}} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-1.5 leading-none">
+                                    <span className="text-xl font-black text-white tracking-tight">SciAstra</span>
+                                    <span className="text-[10px] font-black bg-[#639922] text-white px-1.5 py-0.5 rounded leading-none mt-0.5">ContentOS</span>
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium tracking-wide mt-1 leading-none">Content Hub</p>
+                            </div>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-medium tracking-wide mb-2">Content Hub</p>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
                             {role} | {userName.split(' ')[0]}
                         </div>
