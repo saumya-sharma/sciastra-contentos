@@ -141,24 +141,22 @@ export async function POST(req: Request) {
         results[team] = teamResult;
     }
 
-    // Log to db.json
-    const dbPath = path.join(process.cwd(), 'data/db.json');
-    if (fs.existsSync(dbPath)) {
-        const db = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-        if (!db.notifications) db.notifications = [];
-        db.notifications.push({
+    // Log to Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if (supabaseUrl && supabaseKey) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from('notifications').insert({
             id: `notif_${Date.now()}`,
-            type: 'team_broadcast',
-            teams,
-            channel,
-            message,
-            itemTitle,
-            itemChannel,
-            scheduledDate,
-            results,
-            timestamp: new Date().toISOString(),
+            notificationType: 'team_broadcast',
+            recipientName: teams.join(', '),
+            whatsappNumber: 'Team Blast',
+            message: `[${channel.toUpperCase()}] ${message}`,
+            taskId: null,
+            status: Object.values(results).some((r: any) => r.email === 'failed' || r.whatsapp === 'failed') ? 'Partial Failure' : 'Sent/Mocked',
+            timestamp: new Date().toISOString()
         });
-        fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
     }
 
     return NextResponse.json({ success: true, results });

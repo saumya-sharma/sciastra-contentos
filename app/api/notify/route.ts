@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function POST(req: Request) {
-    const dbPath = path.join(process.cwd(), 'data/db.json');
-    if (!fs.existsSync(dbPath)) return NextResponse.json({ error: 'DB not found' }, { status: 500 });
-    
-    const db = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
     const body = await req.json();
 
     const { recipientName, whatsappNumber, notificationType, message, taskId, title, channel, scheduledTime } = body;
@@ -65,11 +64,10 @@ export async function POST(req: Request) {
         status
     };
 
-    if (!db.notifications) {
-        db.notifications = [];
+    const { error } = await supabase.from('notifications').insert(notificationRecord);
+    if (error) {
+        console.error('Failed to log notification to Supabase:', error);
     }
-    db.notifications.push(notificationRecord);
-    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
 
     return NextResponse.json({ 
         success: true, 

@@ -1,100 +1,76 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET() {
-    const dbPath = path.join(process.cwd(), 'data/db.json');
-    if (!fs.existsSync(dbPath)) {
+    try {
+        const [itemsResp, teamResp, campaignsResp, notifsResp] = await Promise.all([
+            supabase.from('content_items').select('*'),
+            supabase.from('team_members').select('*'),
+            supabase.from('campaigns').select('*'),
+            supabase.from('notifications').select('*')
+        ]);
+        return NextResponse.json({
+            items: itemsResp.data || [],
+            team: teamResp.data || [],
+            campaigns: campaignsResp.data || [],
+            notifications: notifsResp.data || [],
+            config: { hasWatiKey: !!process.env.WATI_API_KEY }
+        });
+    } catch(e) {
         return NextResponse.json({ items: [], team: [], campaigns: [] });
     }
-    const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-    return NextResponse.json({
-        ...data,
-        config: { hasWatiKey: !!process.env.WATI_API_KEY }
-    });
 }
 
 export async function PUT(req: Request) {
-    const dbPath = path.join(process.cwd(), 'data/db.json');
     const body = await req.json();
     
-    if (fs.existsSync(dbPath)) {
-        const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-        
-        // Handling Team Member edits
-        if (body._action === 'UPDATE_TEAM') {
-            const tIndex = data.team.findIndex((t: any) => t.id === body.member.id);
-            if (tIndex !== -1) {
-                data.team[tIndex] = body.member;
-            } else {
-                data.team.push(body.member);
-            }
-            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-            return NextResponse.json({ success: true });
-        }
-
-        // Create new campaign
-        if (body._action === 'CREATE_CAMPAIGN') {
-            if (!data.campaigns) data.campaigns = [];
-            data.campaigns.push(body.campaign);
-            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-            return NextResponse.json({ success: true, campaign: body.campaign });
-        }
-
-
-        const index = data.items.findIndex((i: any) => i.id === body.id);
-        if (index !== -1) {
-            const item = data.items[index];
-            
-            // Audit Log
-            if (body.status && item.status !== body.status) {
-                if (!item.auditLog) item.auditLog = [];
-                item.auditLog.push({
-                    user: body._actor || 'System',
-                    action: `Moved from ${item.status} to ${body.status}`,
-                    timestamp: new Date().toISOString()
-                });
-            }
-            if (body.approval && item.approval !== body.approval) {
-                if (!item.auditLog) item.auditLog = [];
-                item.auditLog.push({
-                    user: body._actor || 'System',
-                    action: `Changed Approval Status to ${body.approval}`,
-                    timestamp: new Date().toISOString()
-                });
-            }
-            
-            // Merge
-            Object.keys(body).forEach(key => {
-                if (key !== '_actor' && key !== 'id' && key !== '_action') {
-                    item[key] = body[key];
-                }
-            });
-
-            data.items[index] = item;
-            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
-            return NextResponse.json(item);
-        }
+    if (body._action === 'UPDATE_TEAM') {
+        const { error } = await supabase.from('team_members').upsert(body.member);
+        return NextResponse.json({ success: !error });
     }
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (body._action === 'CREATE_CAMPAIGN') {
+        const { error } = await supabase.from('campaigns').insert(body.campaign);
+        return NextResponse.json({ success: !error, campaign: body.campaign });
+    }
+    
+    // Normal edit for content_items
+    const { id, _actor, ...changes } = body;
+    
+    // Fetch current item to append auditLog properly:
+    const { data: item } = await supabase.from('content_items').select('auditLog, status, approval').eq('id', id).single();
+    if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    
+    let auditLog = Array.isArray(item.auditLog) ? [...item.auditLog] : [];
+    
+    if (body.status && item.status !== body.status) {
+        auditLog.push({ user: _actor || 'System', action: `Moved from ${item.status} to ${body.status}`, timestamp: new Date().toISOString() });
+    }
+    if (body.approval && item.approval !== body.approval) {
+        auditLog.push({ user: _actor || 'System', action: `Changed Approval Status to ${body.approval}`, timestamp: new Date().toISOString() });
+    }
+    if (!body.status && !body.approval) {
+        // generic prop update log not strictly necessary here since UI optimistic log handles it, but let's append anyway
+        auditLog.push({ user: _actor || 'System', action: `Updated properties`, timestamp: new Date().toISOString() });
+    }
+    
+    const { error } = await supabase.from('content_items').update({ ...changes, auditLog }).eq('id', id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    
+    // fetch back updated
+    const { data: updated } = await supabase.from('content_items').select('*').eq('id', id).single();
+    return NextResponse.json(updated);
 }
 
 export async function POST(req: Request) {
-    const dbPath = path.join(process.cwd(), 'data/db.json');
     const body = await req.json();
-
-    if (!fs.existsSync(dbPath)) {
-        return NextResponse.json({ error: 'DB not found' }, { status: 404 });
-    }
-
-    const data = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-
     if (body._action === 'CREATE_ITEM') {
-        if (!data.items) data.items = [];
-        data.items.push(body.item);
-        fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
+        const { error } = await supabase.from('content_items').insert(body.item);
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
         return NextResponse.json({ success: true, item: body.item });
     }
-
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }

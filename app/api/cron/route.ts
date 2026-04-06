@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET() {
-    const dbPath = path.join(process.cwd(), 'data/db.json');
-    if (!fs.existsSync(dbPath)) return NextResponse.json({ error: 'DB not found' }, { status: 500 });
-    
-    const db = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
     const examsToAdd: any[] = [];
-
     console.log("Starting cron to fetch live exam dates...");
 
     // 1. Fetch NEST Exam Dates
@@ -20,8 +18,6 @@ export async function GET() {
         }).then(res => res.text());
         const $ = cheerio.load(nestHtml);
         
-        // Typical structure scraping... Real pages change, we will stub intelligent fuzzy extraction
-        // Look for string containing "Date of examination"
         const pageText = $('body').text().replace(/\s+/g, ' ');
         const nestMatch = pageText.match(/date of examination.*?(\d{1,2}\s+[a-zA-Z]+\s+\d{4})/i); 
         
@@ -63,15 +59,14 @@ export async function GET() {
     }
 
     // Deduplicate against existing DB exam records
-    examsToAdd.forEach(ex => {
-        const exists = db.items.find((i: any) => i.title === ex.title && i.type === 'Exam');
-        if (!exists) {
-            db.items.push(ex);
+    const { data: existing } = await supabase.from('content_items').select('title, type').eq('type', 'Exam');
+    const existingTitles = new Set(existing?.map(e => e.title) || []);
+    
+    for (const ex of examsToAdd) {
+        if (!existingTitles.has(ex.title)) {
+            await supabase.from('content_items').insert(ex);
         }
-    });
-
-    db.items.sort((a: any, b: any) => a.date.localeCompare(b.date));
-    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+    }
 
     return NextResponse.json({ 
         message: 'Cron job ran successfully. Live dates parsed and stored.', 
