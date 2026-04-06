@@ -9,16 +9,22 @@ type Campaign = { id: string, name: string, target?: string, exam?: string, star
 
 const STATUSES = ['Ideation', 'Scripting', 'Sent to Editor', 'Ready to Publish', 'Published'];
 
-const CHANNELS = [
-    { name: 'Vivek NISER | SciAstra', cls: 'border-l-purple-500', bg: 'bg-purple-900/30' },
-    { name: 'SciAstra English', cls: 'border-l-blue-500', bg: 'bg-blue-900/30' },
-    { name: 'SciAstra 11th', cls: 'border-l-orange-500', bg: 'bg-orange-900/30' },
-    { name: 'SciAstra 12th', cls: 'border-l-orange-500', bg: 'bg-orange-900/30' },
-    { name: 'SciAstra College', cls: 'border-l-teal-500', bg: 'bg-teal-900/30' },
-    { name: 'SciAstra Whatsapp/emails/notifications', cls: 'border-l-[#25D366]', bg: 'bg-[#25D366]/20' },
-    { name: 'Ad Campaigns', cls: 'border-l-red-500', bg: 'bg-red-900/30' },
-    { name: 'Exams', cls: 'border-l-red-600', bg: 'bg-red-950/40' }
+type Channel = { id: string; name: string; platform: string; color: string; cls: string; bg: string; defaultAssignee?: string; archived?: boolean; order?: number };
+
+const DEFAULT_CHANNELS: Channel[] = [
+    { id: 'ch_vivek',    name: 'Vivek NISER | SciAstra', platform: 'YouTube',   color: '#7C3AED', cls: 'border-l-purple-500', bg: 'bg-purple-900/30',   defaultAssignee: 'Vivek', order: 0 },
+    { id: 'ch_ig',       name: 'Instagram',              platform: 'Instagram', color: '#E1306C', cls: 'border-l-[#E1306C]',  bg: 'bg-[#E1306C]/15',    defaultAssignee: 'Mahak', order: 1 },
+    { id: 'ch_english',  name: 'SciAstra English',       platform: 'YouTube',   color: '#1D4ED8', cls: 'border-l-blue-500',   bg: 'bg-blue-900/30',     defaultAssignee: 'Priya', order: 2 },
+    { id: 'ch_11th',     name: 'SciAstra 11th',          platform: 'YouTube',   color: '#EA580C', cls: 'border-l-orange-500', bg: 'bg-orange-900/30',   defaultAssignee: 'Ritika', order: 3 },
+    { id: 'ch_12th',     name: 'SciAstra 12th',          platform: 'YouTube',   color: '#639922', cls: 'border-l-[#639922]',  bg: 'bg-[#639922]/15',    defaultAssignee: 'Ritika', order: 4 },
+    { id: 'ch_college',  name: 'SciAstra College',       platform: 'YouTube',   color: '#0D9488', cls: 'border-l-teal-500',   bg: 'bg-teal-900/30',     defaultAssignee: 'Team', order: 5 },
+    { id: 'ch_wa',       name: 'SciAstra Whatsapp/emails/notifications', platform: 'WhatsApp', color: '#25D366', cls: 'border-l-[#25D366]', bg: 'bg-[#25D366]/20', defaultAssignee: 'Mahak', order: 6 },
+    { id: 'ch_ads',      name: 'Ad Campaigns',           platform: 'Other',     color: '#DC2626', cls: 'border-l-red-500',    bg: 'bg-red-900/30',      order: 7 },
+    { id: 'ch_exams',    name: 'Exams',                  platform: 'Other',     color: '#991B1B', cls: 'border-l-red-600',    bg: 'bg-red-950/40',      order: 8 },
 ];
+
+// Legacy CHANNELS constant kept for compat — derived from DEFAULT_CHANNELS
+const CHANNELS = DEFAULT_CHANNELS.map(c => ({ name: c.name, cls: c.cls, bg: c.bg }));
 
 export default function ContentOS() {
     const [items, setItems] = useState<Item[]>([]);
@@ -28,6 +34,10 @@ export default function ContentOS() {
     const [config, setConfig] = useState({ hasWatiKey: false });
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('pipeline');
+    const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'>('members');
+    const [channelConfig, setChannelConfig] = useState<Channel[]>(DEFAULT_CHANNELS);
+    const [showAddChannelForm, setShowAddChannelForm] = useState(false);
+    const [newChannelForm, setNewChannelForm] = useState({ name: '', platform: 'Instagram', color: '#E1306C', defaultAssignee: '' });
     const [reportDate, setReportDate] = useState('');
     const [isDark, setIsDark] = useState(true);
     const [mounted, setMounted] = useState(false);
@@ -60,6 +70,7 @@ export default function ContentOS() {
     const [newCampaignForm, setNewCampaignForm] = useState({ name: '', exam: 'None', target: '', startDate: '', endDate: '' });
     const [savingCampaign, setSavingCampaign] = useState(false);
     const [savedToast, setSavedToast] = useState(false); // "Saved ✓" indicator in drawer
+    const [titleError, setTitleError] = useState(false); // New item title validation
 
     // Notify Teams inline panel
     const [showNotifyPanel, setShowNotifyPanel] = useState(false);
@@ -193,8 +204,25 @@ export default function ContentOS() {
         setTimeout(() => setSavedToast(false), 2000);
     };
 
+    const refreshData = async () => {
+        const data = await fetch('/api/db').then(r => r.json());
+        setItems(data.items || []);
+        setCampaigns(data.campaigns || []);
+        setTeam(data.team || []);
+    };
+
     const updateItem = async (item: Item, payloadChanges: Partial<Item>) => {
         if (item.id === 'new') {
+            const potentialTitle = payloadChanges.title !== undefined ? payloadChanges.title : item.title;
+            if (!potentialTitle.trim()) {
+                // Must have a title to create an item
+                setSelectedItem({ ...item, ...payloadChanges });
+                setTitleError(true);
+                setTimeout(() => setTitleError(false), 3000);
+                return;
+            }
+            setTitleError(false);
+
             // Persist new item to DB immediately
             const newId = Math.random().toString(36).substring(7);
             const newItem: Item = { 
@@ -205,13 +233,14 @@ export default function ContentOS() {
             };
             setItems(prev => [...prev, newItem]);
             setSelectedItem(newItem);
-            // Write to DB so calendar and kanban stay in sync on reload
+            // Write to DB + refresh so calendar and kanban are in sync
             await fetch('/api/db', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ _action: 'CREATE_ITEM', item: newItem }),
             });
             showSavedToast();
+            await refreshData(); // re-fetch so calendar row updates immediately
             return;
         }
 
@@ -660,7 +689,7 @@ export default function ContentOS() {
                                                             <div key={d.iso} className="border-r border-slate-800/50 p-2 relative min-h-[80px] group hover:bg-slate-700/30 transition">
                                                                 {matched.map(m => (
                                                                     <div key={m.id} onClick={(e)=>{e.stopPropagation(); setSelectedItem(m)}} className={`mb-1 p-1.5 rounded text-[9px] leading-tight font-medium ${getBgClass(m.channel)} ${getBorderClass(m.channel)} border-l-4 border-y border-r border-y-slate-700 border-r-slate-700 text-white shadow-sm cursor-pointer`}>
-                                                                        <span title={m.title}>{m.title.length > 35 ? m.title.substring(0, 35) + '...' : m.title}</span>
+                                                                        <span title={m.title || 'Untitled Post'}>{m.title ? (m.title.length > 35 ? m.title.substring(0, 35) + '...' : m.title) : <em className="text-slate-400">Untitled Post</em>}</span>
                                                                     </div>
                                                                 ))}
                                                                 <div onClick={() => setSelectedItem({ id: 'new', title: '', type: 'Content', channel: ch.name, date: d.iso, status: 'Ideation', assignees: { smm: userName, editor: '', designer: '' } })} className="absolute bottom-1 right-1 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 text-sm text-slate-500 font-light hover:text-[#639922] hover:bg-slate-700 rounded transition cursor-pointer">+</div>
@@ -771,35 +800,166 @@ export default function ContentOS() {
                                                 </div>
                                             </div>
                                         )}
-                                        <div className="bg-[var(--color-surface)] rounded-xl border border-slate-800 overflow-hidden divide-y divide-slate-800">
-                                            <div className="p-6 bg-slate-900/50 flex justify-between items-center">
-                                            <h3 className="font-bold text-lg">Platform Identities</h3>
-                                            <button onClick={() => setShowOnboardModal(true)} className="bg-[#639922] text-white px-4 py-2 rounded text-xs font-bold hover:bg-[#4d7a18] transition shadow">+ Onboard Member</button>
-                                        </div>
-                                        {team.map(member => (
-                                            <div key={member.id} className={`p-6 flex items-center justify-between hover:bg-slate-800/30 transition ${member.active === false ? 'opacity-50 grayscale' : ''}`}>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-300">{member.name.charAt(0)}</div>
-                                                    <div>
-                                                        <input type="text" defaultValue={member.name} onBlur={(e) => updateTeamMember({...member, name: e.target.value})} className="bg-transparent font-bold text-white outline-none focus:border-b focus:border-[#639922] transition w-48"/>
-                                                        <div className="text-xs text-slate-500 flex gap-4 mt-1 items-center">
-                                                            <span>Phone: </span>
-                                                            <input type="tel" placeholder="Add phone..." defaultValue={member.whatsapp} onBlur={(e) => updateTeamMember({...member, whatsapp: e.target.value})} className="bg-[#0B1121] border border-slate-700 hover:border-slate-500 focus:border-[#639922] outline-none text-slate-300 w-32 rounded px-2 py-1 transition cursor-text pointer-events-auto" />
+                                        <div className="bg-[var(--color-surface)] rounded-xl border border-slate-800 overflow-hidden">
+                                            {/* Tab Bar */}
+                                            <div className="flex border-b border-slate-800 bg-slate-900/50">
+                                                {(['members', 'channels'] as const).map(tab => (
+                                                    <button key={tab} onClick={() => setTeamManagementTab(tab)}
+                                                        className={`px-6 py-4 text-sm font-bold capitalize tracking-wide transition border-b-2 -mb-px ${ teamManagementTab === tab ? 'border-[#639922] text-[#639922]' : 'border-transparent text-slate-400 hover:text-white' }`}>
+                                                        {tab === 'members' ? '👥 Platform Identities' : '📺 Channels'}
+                                                    </button>
+                                                ))}
+                                                {teamManagementTab === 'members' && (
+                                                    <div className="ml-auto flex items-center pr-4">
+                                                        <button onClick={() => setShowOnboardModal(true)} className="bg-[#639922] text-white px-4 py-2 rounded text-xs font-bold hover:bg-[#4d7a18] transition shadow">+ Onboard Member</button>
+                                                    </div>
+                                                )}
+                                                {teamManagementTab === 'channels' && (
+                                                    <div className="ml-auto flex items-center pr-4">
+                                                        <button onClick={() => setShowAddChannelForm(true)} className="bg-[#639922] text-white px-4 py-2 rounded text-xs font-bold hover:bg-[#4d7a18] transition shadow">+ Add Channel</button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Members Tab */}
+                                            {teamManagementTab === 'members' && (
+                                                <div className="divide-y divide-slate-800">
+                                                    {team.map(member => (
+                                                        <div key={member.id} className={`p-6 flex items-center justify-between hover:bg-slate-800/30 transition ${member.active === false ? 'opacity-50 grayscale' : ''}`}>
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-bold text-slate-300">{member.name.charAt(0)}</div>
+                                                                <div>
+                                                                    <input type="text" defaultValue={member.name} onBlur={(e) => updateTeamMember({...member, name: e.target.value})} className="bg-transparent font-bold text-white outline-none focus:border-b focus:border-[#639922] transition w-48"/>
+                                                                    <div className="text-xs text-slate-500 flex gap-4 mt-1 items-center">
+                                                                        <span>Phone: </span>
+                                                                        <input type="tel" placeholder="Add phone..." defaultValue={member.whatsapp} onBlur={(e) => updateTeamMember({...member, whatsapp: e.target.value})} className="bg-[#0B1121] border border-slate-700 hover:border-slate-500 focus:border-[#639922] outline-none text-slate-300 w-32 rounded px-2 py-1 transition cursor-text pointer-events-auto" />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-3">
+                                                                <select defaultValue={member.role} disabled={member.active===false} onChange={(e) => updateTeamMember({...member, role: e.target.value})} className="bg-[#0B1121] border border-slate-700 text-xs rounded px-3 py-2 font-bold outline-none text-white">
+                                                                    <option value="ADMIN">Administrator</option>
+                                                                    <option value="SMM">Social Manager</option>
+                                                                    <option value="CREATOR">Creator (Editor/Design)</option>
+                                                                </select>
+                                                                <button onClick={() => handleDeactivate(member)} className={`px-4 py-2 rounded text-xs font-bold border transition ${member.active === false ? 'border-green-500/50 text-green-400 hover:bg-green-500/10' : 'border-red-500/50 text-red-400 hover:bg-red-500/10'}`}>
+                                                                    {member.active === false ? 'Reactivate' : 'Deactivate'}
+                                                                </button>
+                                                            </div>
                                                         </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Channels Tab */}
+                                            {teamManagementTab === 'channels' && (
+                                                <div className="divide-y divide-slate-800">
+                                                    {/* Add Channel Form */}
+                                                    {showAddChannelForm && (
+                                                        <div className="p-6 bg-slate-900/70 space-y-4">
+                                                            <p className="text-xs font-bold text-[#639922] uppercase tracking-widest mb-2">New Channel</p>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Channel Name *</label>
+                                                                    <input type="text" value={newChannelForm.name} onChange={e => setNewChannelForm(f => ({...f, name: e.target.value}))}
+                                                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white"
+                                                                        placeholder="e.g. SciAstra LinkedIn" />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Platform</label>
+                                                                    <select value={newChannelForm.platform} onChange={e => setNewChannelForm(f => ({...f, platform: e.target.value}))}
+                                                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white cursor-pointer">
+                                                                        {['Instagram','YouTube','LinkedIn','Twitter','WhatsApp','Email','Other'].map(p => <option key={p}>{p}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Color</label>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input type="color" value={newChannelForm.color} onChange={e => setNewChannelForm(f => ({...f, color: e.target.value}))}
+                                                                            className="w-8 h-8 rounded cursor-pointer border border-slate-700 bg-transparent" />
+                                                                        <span className="text-xs text-slate-400 font-mono">{newChannelForm.color}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Default Assignee</label>
+                                                                    <select value={newChannelForm.defaultAssignee} onChange={e => setNewChannelForm(f => ({...f, defaultAssignee: e.target.value}))}
+                                                                        className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white cursor-pointer">
+                                                                        <option value="">None</option>
+                                                                        {team.filter(t => t.active !== false).map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-3 pt-2">
+                                                                <button onClick={() => setShowAddChannelForm(false)} className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition">Cancel</button>
+                                                                <button
+                                                                    disabled={!newChannelForm.name.trim()}
+                                                                    onClick={() => {
+                                                                        if (!newChannelForm.name.trim()) return;
+                                                                        const hexColor = newChannelForm.color;
+                                                                        const newCh: Channel = {
+                                                                            id: `ch_${Date.now()}`,
+                                                                            name: newChannelForm.name.trim(),
+                                                                            platform: newChannelForm.platform,
+                                                                            color: hexColor,
+                                                                            cls: `border-l-[${hexColor}]`,
+                                                                            bg: `bg-[${hexColor}]/15`,
+                                                                            defaultAssignee: newChannelForm.defaultAssignee,
+                                                                            archived: false,
+                                                                            order: channelConfig.length,
+                                                                        };
+                                                                        setChannelConfig(prev => [...prev, newCh]);
+                                                                        setNewChannelForm({ name: '', platform: 'Instagram', color: '#E1306C', defaultAssignee: '' });
+                                                                        setShowAddChannelForm(false);
+                                                                    }}
+                                                                    className="px-6 py-2 rounded-lg bg-[#639922] text-white text-xs font-black hover:bg-[#4d7a18] transition disabled:opacity-50">
+                                                                    Save Channel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Channel list */}
+                                                    {channelConfig.filter(ch => ch.name !== 'Exams').map((ch, idx) => (
+                                                        <div key={ch.id} className={`p-4 flex items-center gap-4 hover:bg-slate-800/20 transition ${ch.archived ? 'opacity-40' : ''}`}>
+                                                            {/* Drag handle */}
+                                                            <span className="text-slate-600 cursor-grab text-lg select-none" title="Drag to reorder"
+                                                                draggable
+                                                                onDragStart={e => e.dataTransfer.setData('chIdx', String(idx))}
+                                                                onDragOver={e => e.preventDefault()}
+                                                                onDrop={e => {
+                                                                    const from = parseInt(e.dataTransfer.getData('chIdx'));
+                                                                    if (from === idx) return;
+                                                                    setChannelConfig(prev => {
+                                                                        const arr = [...prev];
+                                                                        const [moved] = arr.splice(from, 1);
+                                                                        arr.splice(idx, 0, moved);
+                                                                        return arr.map((c,i) => ({...c, order: i}));
+                                                                    });
+                                                                }}>⠿</span>
+                                                            {/* Color dot */}
+                                                            <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: ch.color }} />
+                                                            {/* Info */}
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="font-bold text-sm text-white truncate">{ch.name}</p>
+                                                                <p className="text-[10px] text-slate-500">{ch.platform}{ch.defaultAssignee ? ` · ${ch.defaultAssignee}` : ''}</p>
+                                                            </div>
+                                                            {/* Color input */}
+                                                            <input type="color" value={ch.color} title="Change color"
+                                                                onChange={e => setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, color: e.target.value} : c))}
+                                                                className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer" />
+                                                            {/* Archive / Restore */}
+                                                            <button
+                                                                onClick={() => setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, archived: !c.archived} : c))}
+                                                                className={`px-3 py-1.5 rounded text-[10px] font-bold border transition ${ch.archived ? 'border-green-500/40 text-green-400 hover:bg-green-500/10' : 'border-slate-600 text-slate-400 hover:border-red-500/40 hover:text-red-400'}`}>
+                                                                {ch.archived ? 'Restore' : 'Archive'}
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <div className="p-4 text-[10px] text-slate-600 text-center">
+                                                        Drag rows to reorder · Archived channels are hidden from Calendar &amp; Kanban
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <select defaultValue={member.role} disabled={member.active===false} onChange={(e) => updateTeamMember({...member, role: e.target.value})} className="bg-[#0B1121] border border-slate-700 text-xs rounded px-3 py-2 font-bold outline-none text-white">
-                                                        <option value="ADMIN">Administrator</option>
-                                                        <option value="SMM">Social Manager</option>
-                                                        <option value="CREATOR">Creator (Editor/Design)</option>
-                                                    </select>
-                                                    <button onClick={() => handleDeactivate(member)} className={`px-4 py-2 rounded text-xs font-bold border transition ${member.active === false ? 'border-green-500/50 text-green-400 hover:bg-green-500/10' : 'border-red-500/50 text-red-400 hover:bg-red-500/10'}`}>
-                                                        {member.active === false ? 'Reactivate' : 'Deactivate'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -1145,7 +1305,16 @@ export default function ContentOS() {
                                      <span className={`text-[10px] font-bold text-white uppercase px-2 py-1 rounded tracking-wider ${getBgClass(selectedItem.channel)}`}>{selectedItem.channel}</span>
                                      <input type="time" defaultValue={selectedItem.scheduledTime} onBlur={e => updateItem(selectedItem, {scheduledTime: e.target.value})} className="bg-transparent text-slate-400 text-xs font-mono outline-none hover:text-white transition" />
                                 </div>
-                                <textarea defaultValue={selectedItem.title} onBlur={(e) => updateItem(selectedItem, {title: e.target.value})} className="w-full bg-transparent font-black text-xl md:text-2xl leading-tight resize-none outline-none focus:border-b border-slate-700" rows={2}/>
+                                <div className="relative">
+                                    <textarea 
+                                        defaultValue={selectedItem.title} 
+                                        onBlur={(e) => updateItem(selectedItem, {title: e.target.value})} 
+                                        className={`w-full bg-transparent font-black text-xl md:text-2xl leading-tight resize-none outline-none focus:border-b border-slate-700 ${titleError ? 'border-b border-red-500 pb-1' : ''}`} 
+                                        rows={2}
+                                        placeholder="Enter Content Title..."
+                                    />
+                                    {titleError && <span className="absolute bottom-[-16px] left-0 text-red-500 text-[10px] font-bold">Title is required</span>}
+                                </div>
                                 {selectedItem.campaignId && <span className="text-purple-400 text-xs font-bold uppercase tracking-wider block mt-2">&rarr; {campaigns.find(c=>c.id===selectedItem.campaignId)?.name || 'Campaign'}</span>}
                             </div>
                             {/* Header actions: Saved indicator + close */}

@@ -53,12 +53,13 @@ export async function POST(req: Request) {
     }
 
     // Database logging
+    const filledMessage = `Hi ${recipientName}, your content '${title || 'Content Item'}' on ${channel || 'SciAstra'} is ready for review. Scheduled: ${scheduledTime || 'TBD'}. Please approve on SciAstra ContentOS.`;
     const notificationRecord = {
         id: uuidv4(),
         recipientName,
         whatsappNumber,
         notificationType,
-        message: apiKey ? "WATI Template Broadcast Sent" : "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
+        message: apiKey ? "WATI Template Broadcast Sent" : filledMessage,
         taskId,
         timestamp: new Date().toISOString(),
         status
