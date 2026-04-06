@@ -61,6 +61,17 @@ export default function ContentOS() {
     const [savingCampaign, setSavingCampaign] = useState(false);
     const [savedToast, setSavedToast] = useState(false); // "Saved ✓" indicator in drawer
 
+    // Notify Teams inline panel
+    const [showNotifyPanel, setShowNotifyPanel] = useState(false);
+    const [notifyTeams, setNotifyTeams] = useState<string[]>([]);
+    const [notifyChannel, setNotifyChannel] = useState<'zoho'|'wati'|'both'>('zoho');
+    const [notifyMessageType, setNotifyMessageType] = useState('batch_live');
+    const [notifyCustomMsg, setNotifyCustomMsg] = useState('');
+    const [notifySending, setNotifySending] = useState(false);
+    const [notifyResult, setNotifyResult] = useState('');
+    const [zohoEnabled, setZohoEnabled] = useState(false);
+    const [watiEnabled, setWatiEnabled] = useState(false);
+
     useEffect(() => {
         // 1. SYNC: read role was already done by lazy useState initializer above
         //    Just handle tutorial check here
@@ -101,6 +112,12 @@ export default function ContentOS() {
 
         // Background cron (fire-and-forget)
         fetch('/api/cron').catch(() => {});
+
+        // Check Zoho + WATI notification config
+        fetch('/api/notify-teams').then(r => r.json()).then(cfg => {
+            setZohoEnabled(!!cfg.zohoConfigured);
+            setWatiEnabled(!!cfg.watiConfigured);
+        }).catch(() => {});
     }, []);
 
     const toggleDarkMode = () => {
@@ -1357,6 +1374,172 @@ export default function ContentOS() {
                                         )}
                                     </div>
 
+                                    {/* Notify Teams Panel */}
+                                    <div className="mt-8 pt-6 border-t border-slate-800/50">
+                                        <button
+                                            onClick={() => { setShowNotifyPanel(p => !p); setNotifyResult(''); }}
+                                            className={`w-full font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition border text-sm ${
+                                                showNotifyPanel
+                                                    ? 'bg-indigo-900/30 border-indigo-500/40 text-indigo-300'
+                                                    : 'bg-indigo-900/10 border-indigo-500/20 hover:bg-indigo-900/25 hover:border-indigo-500/40 text-indigo-400'
+                                            }`}
+                                        >
+                                            <span className="text-base">📢</span> Notify Teams
+                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`transition-transform ${showNotifyPanel ? 'rotate-180' : ''}`}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                        </button>
+
+                                        {showNotifyPanel && (() => {
+                                            const TEAMS = [
+                                                { key: 'marketing',  label: 'Marketing Team' },
+                                                { key: 'sales',      label: 'Sales Team' },
+                                                { key: 'operations', label: 'Operations Team' },
+                                                { key: 'academic',   label: 'Academic / Faculty Team' },
+                                                { key: 'founders',   label: 'Founders' },
+                                            ];
+                                            const MSG_TYPES = [
+                                                { key: 'batch_live',    label: 'Batch announcement going live — prepare for enquiry spike' },
+                                                { key: 'result_post',   label: 'Result / achievement post' },
+                                                { key: 'campaign_align',label: 'Campaign launching — all teams align' },
+                                                { key: 'urgent_review', label: 'Urgent content change — please review' },
+                                                { key: 'custom',        label: 'Custom message…' },
+                                            ];
+                                            const buildPreview = (): string => {
+                                                const teamLabels = notifyTeams.map(t => TEAMS.find(x => x.key === t)?.label || t).join(', ') || '[select teams]';
+                                                const dateStr = selectedItem?.date ? new Date(selectedItem.date).toDateString() : 'TBD';
+                                                const time = selectedItem?.scheduledTime || '–';
+                                                if (notifyMessageType === 'custom') return notifyCustomMsg || '(type your message above)';
+                                                const templates: Record<string, string> = {
+                                                    batch_live:    `Hi ${teamLabels}, a new ${selectedItem?.channel || ''} post is going live on ${dateStr} at ${time}: "${selectedItem?.title || ''}". Please prepare for increased enquiries. — SciAstra MarketingOS`,
+                                                    result_post:   `Hi ${teamLabels}, a result/achievement post is scheduled: "${selectedItem?.title || ''}" (${selectedItem?.channel || ''}) on ${dateStr}. Stand by for engagement. — SciAstra MarketingOS`,
+                                                    campaign_align:`Hi ${teamLabels}, campaign content "${selectedItem?.title || ''}" is launching on ${dateStr}. All teams please align your workflows accordingly. — SciAstra MarketingOS`,
+                                                    urgent_review: `URGENT — Hi ${teamLabels}, the content "${selectedItem?.title || ''}" requires an immediate review. Please check SciAstra ContentOS now. — SciAstra MarketingOS`,
+                                                };
+                                                return templates[notifyMessageType] || '';
+                                            };
+                                            const sendNotification = async () => {
+                                                if (!notifyTeams.length) { setNotifyResult('⚠ Select at least one team'); return; }
+                                                setNotifySending(true);
+                                                setNotifyResult('');
+                                                try {
+                                                    const res = await fetch('/api/notify-teams', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({
+                                                            teams: notifyTeams,
+                                                            channel: notifyChannel,
+                                                            message: buildPreview(),
+                                                            subject: `[ContentOS] ${selectedItem?.title || 'Update'}`,
+                                                            itemTitle: selectedItem?.title,
+                                                            itemChannel: selectedItem?.channel,
+                                                            scheduledDate: selectedItem?.date,
+                                                        }),
+                                                    });
+                                                    const data = await res.json();
+                                                    setNotifyResult(data.success ? '✅ Notifications sent!' : '❌ Send failed');
+                                                    setTimeout(() => { setShowNotifyPanel(false); setNotifyResult(''); setNotifyTeams([]); }, 2500);
+                                                } catch {
+                                                    setNotifyResult('❌ Network error');
+                                                } finally {
+                                                    setNotifySending(false);
+                                                }
+                                            };
+                                            return (
+                                                <div className="mt-3 bg-[#0B1121] border border-indigo-500/20 rounded-xl p-4 space-y-4">
+                                                    {/* Team selection */}
+                                                    <div>
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-widest">Select Teams to Notify</p>
+                                                        <div className="space-y-1.5">
+                                                            {TEAMS.map(t => (
+                                                                <label key={t.key} className="flex items-center gap-2.5 cursor-pointer group">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={notifyTeams.includes(t.key)}
+                                                                        onChange={e => setNotifyTeams(prev =>
+                                                                            e.target.checked ? [...prev, t.key] : prev.filter(x => x !== t.key)
+                                                                        )}
+                                                                        className="accent-indigo-500 w-3.5 h-3.5"
+                                                                    />
+                                                                    <span className="text-sm text-slate-300 group-hover:text-white transition">{t.label}</span>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Channel */}
+                                                    <div>
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-widest">Channel</p>
+                                                        <div className="flex flex-col gap-1.5">
+                                                            {[
+                                                                { value: 'zoho',  label: 'Zoho Mail', enabled: zohoEnabled },
+                                                                { value: 'wati',  label: 'WhatsApp (WATI)', enabled: watiEnabled },
+                                                                { value: 'both',  label: 'Both', enabled: zohoEnabled || watiEnabled },
+                                                            ].map(opt => (
+                                                                <label key={opt.value} className={`flex items-center gap-2.5 ${opt.enabled ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="notifyCh"
+                                                                        value={opt.value}
+                                                                        checked={notifyChannel === opt.value}
+                                                                        disabled={!opt.enabled}
+                                                                        onChange={() => setNotifyChannel(opt.value as 'zoho'|'wati'|'both')}
+                                                                        className="accent-indigo-500"
+                                                                    />
+                                                                    <span className="text-sm text-slate-300">{opt.label}</span>
+                                                                    {!opt.enabled && opt.value !== 'both' && (
+                                                                        <span className="text-[9px] text-slate-500 italic">(not configured)</span>
+                                                                    )}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Message type */}
+                                                    <div>
+                                                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-widest">Message Type</p>
+                                                        <select
+                                                            value={notifyMessageType}
+                                                            onChange={e => setNotifyMessageType(e.target.value)}
+                                                            className="w-full bg-slate-900 border border-slate-700 text-sm text-white rounded-lg p-2.5 outline-none focus:border-indigo-500 cursor-pointer"
+                                                        >
+                                                            {MSG_TYPES.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                                                        </select>
+                                                        {notifyMessageType === 'custom' && (
+                                                            <textarea
+                                                                value={notifyCustomMsg}
+                                                                onChange={e => setNotifyCustomMsg(e.target.value)}
+                                                                rows={3}
+                                                                placeholder="Type your message..."
+                                                                className="w-full mt-2 bg-slate-900 border border-slate-700 text-sm text-white rounded-lg p-2.5 outline-none focus:border-indigo-500 resize-none custom-scrollbar"
+                                                            />
+                                                        )}
+                                                    </div>
+
+                                                    {/* Preview */}
+                                                    <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-3">
+                                                        <p className="text-[9px] uppercase text-slate-500 mb-1.5 font-bold tracking-wider">Preview</p>
+                                                        <p className="text-xs text-slate-300 leading-relaxed italic">{buildPreview()}</p>
+                                                    </div>
+
+                                                    {/* Result / Actions */}
+                                                    {notifyResult && <p className="text-xs font-bold text-center py-1">{notifyResult}</p>}
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => { setShowNotifyPanel(false); setNotifyTeams([]); setNotifyResult(''); }}
+                                                            className="flex-1 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition"
+                                                        >Cancel</button>
+                                                        <button
+                                                            onClick={sendNotification}
+                                                            disabled={notifySending || !notifyTeams.length || (!zohoEnabled && !watiEnabled)}
+                                                            className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {notifySending ? 'Sending…' : 'Send Notification'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
                                     {/* Webhook Action Trigger */}
                                     <div className="mt-8 pt-6 border-t border-slate-800/50">
                                         <button onClick={() => triggerWhatsApp(selectedItem)} className="w-full bg-[#25D366]/10 border border-[#25D366]/30 hover:bg-[#25D366]/20 hover:border-[#25D366]/50 text-[#25D366] font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 transition shadow-lg">
@@ -1365,6 +1548,7 @@ export default function ContentOS() {
                                         </button>
                                         <p className="text-[9px] text-slate-500 text-center mt-2 font-medium">Sends payload to internal webhook simulating WATI integration.</p>
                                     </div>
+
                                 </div>
                             )}
                         </div>

@@ -335,6 +335,32 @@
       "status": "Ready"
     },
     {
+      "id": "g99jt",
+      "title": "",
+      "type": "Content",
+      "channel": "Vivek NISER | SciAstra",
+      "date": "2026-04-06",
+      "status": "Sent to Editor",
+      "assignees": {
+        "smm": "Vivek",
+        "editor": "",
+        "designer": ""
+      },
+      "auditLog": [
+        {
+          "user": "Vivek",
+          "action": "Created",
+          "timestamp": "2026-04-06T03:07:27.215Z"
+        },
+        {
+          "user": "Vivek",
+          "action": "Changed Approval Status to Changes Requested",
+          "timestamp": "2026-04-06T03:07:29.122Z"
+        }
+      ],
+      "approval": "Changes Requested"
+    },
+    {
       "id": "369da498-b2bc-4a28-8b33-4c44c145b42b",
       "title": "JEE MAINS 2026-S2",
       "type": "Exam",
@@ -1863,6 +1889,16 @@
       "message": "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
       "taskId": "tezidl",
       "timestamp": "2026-04-06T02:40:25.953Z",
+      "status": "Sent (Mock)"
+    },
+    {
+      "id": "5a16ebe3-a790-46f9-b50e-7c41fc767810",
+      "recipientName": "Vivek",
+      "whatsappNumber": "+919999999999",
+      "notificationType": "Manual Trigger",
+      "message": "Hi {name}, your content '{title}' on {channel} is ready for review. Scheduled: {time}. Please approve on SciAstra ContentOS.",
+      "taskId": "g99jt",
+      "timestamp": "2026-04-06T03:07:39.825Z",
       "status": "Sent (Mock)"
     }
   ]
