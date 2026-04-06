@@ -32,9 +32,16 @@ export default function ContentOS() {
     const [isDark, setIsDark] = useState(true);
     const [mounted, setMounted] = useState(false);
     
-    // Auth & Roles
-    const [role, setRole] = useState<string | null>(null);
-    const [userName, setUserName] = useState<string>('Unknown');
+    // Auth & Roles — initialized from localStorage synchronously on first render
+    // This prevents the flash where mounted=true but role=null
+    const [role, setRole] = useState<string | null>(() => {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem('sa_role');
+    });
+    const [userName, setUserName] = useState<string>(() => {
+        if (typeof window === 'undefined') return 'Unknown';
+        return localStorage.getItem('sa_name') || 'Unknown';
+    });
     const [viewMode, setViewMode] = useState<'week'|'month'>('week');
 
     // Drawer state
@@ -51,19 +58,18 @@ export default function ContentOS() {
     const [filterCampaign, setFilterCampaign] = useState('');
 
     useEffect(() => {
-        // Local state hydration
+        // 1. SYNC: read role was already done by lazy useState initializer above
+        //    Just handle tutorial check here
         const savedRole = localStorage.getItem('sa_role');
         const savedName = localStorage.getItem('sa_name');
         if (savedRole && savedName) {
-            setRole(savedRole);
-            setUserName(savedName);
-            setActiveTab(savedRole === 'CREATOR' ? 'pipeline' : 'pipeline');
             if (!localStorage.getItem('sa_tutorial_seen')) {
                 setShowTutorial(true);
                 localStorage.setItem('sa_tutorial_seen', 'true');
             }
         }
-        // Dark mode from localStorage
+
+        // Dark mode
         const savedTheme = localStorage.getItem('sa_theme');
         if (savedTheme === 'light') {
             document.documentElement.classList.remove('dark');
@@ -72,22 +78,25 @@ export default function ContentOS() {
             document.documentElement.classList.add('dark');
             setIsDark(true);
         }
-        // Fix hydration: set date client-side only
+
+        // Report date (client-only to avoid SSR mismatch)
         setReportDate(new Date().toLocaleDateString());
 
+        // 2. MOUNT: unblock login UI — happens in same microtask as role set above
+        setMounted(true);
+
+        // 3. ASYNC: fetch DB data (non-blocking)
         fetch('/api/db').then(res => res.json()).then(data => {
             setItems(data.items || []);
             setTeam(data.team || []);
             setCampaigns(data.campaigns || []);
-                setNotifications(data.notifications || []);
-                if (data.config) setConfig(data.config);
+            setNotifications(data.notifications || []);
+            if (data.config) setConfig(data.config);
             setLoading(false);
         });
-        
-        // Background Cron run (Demo)
+
+        // Background cron (fire-and-forget)
         fetch('/api/cron').catch(() => {});
-        // Signal client is ready — unblocks login screen render
-        setMounted(true);
     }, []);
 
     const toggleDarkMode = () => {

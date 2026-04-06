@@ -1,25 +1,21 @@
 @import "tailwindcss";
 
-/* Tailwind v4: enable dark mode via .dark class on <html> */
-@custom-variant dark (&:where(.dark, .dark *));
+/* -------------------------------
+   Theme: CSS custom properties
+   Light = default, Dark = .dark on <html>
+   ------------------------------- */
 
-/* Light mode overrides when .dark is NOT on <html> */
-:root:not(.dark) {
+/* Light mode (default) */
+:root {
     --color-background: #f1f5f9;
     --color-foreground: #0f172a;
     --color-surface: #ffffff;
     --color-surface-hover: #e2e8f0;
-}
-
-
-@theme {
-    --color-background: #0F172A; /* Restored deep navy */
-    --color-foreground: #F8FAFC;
-    --color-brand-primary: #639922; /* Restored Science Green */
+    --color-text-primary: #0f172a;
+    --color-text-muted: #64748b;
+    --color-border: #e2e8f0;
+    --color-brand-primary: #639922;
     --color-brand-secondary: #4d7a18;
-    --color-surface: #1E293B;
-    --color-surface-hover: #334155;
-    
     --color-channel-vivek: #9333ea;
     --color-channel-english: #3b82f6;
     --color-channel-11th: #fb923c;
@@ -27,6 +23,23 @@
     --color-channel-college: #14b8a6;
     --color-channel-whatsapp: #25D366;
 }
+
+/* Dark mode — applied when <html> has .dark class */
+.dark {
+    --color-background: #0F172A;
+    --color-foreground: #F8FAFC;
+    --color-surface: #1E293B;
+    --color-surface-hover: #334155;
+    --color-text-primary: #f8fafc;
+    --color-text-muted: #94a3b8;
+    --color-border: #1e293b;
+}
+
+@theme {
+    --color-brand-primary: #639922;
+    --color-brand-secondary: #4d7a18;
+}
+
 
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

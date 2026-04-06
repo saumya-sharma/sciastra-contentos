@@ -49,7 +49,9 @@ const assignees = [
 function getAssignee(channel) {
     if (channel.includes('English')) return Math.random() > 0.5 ? 'Priya' : 'Ritika';
     if (channel.includes('Vivek')) return 'Vivek';
-    if (channel.includes('Whatsapp')) return 'Mahak'; 
+    if (channel.includes('Whatsapp')) return 'Mahak';
+    // 11th, 12th, College are Instagram-facing — Mahak manages these
+    if (channel.includes('11th') || channel.includes('12th') || channel.includes('College')) return 'Mahak';
     const randomEditor = ['Rishav', 'Manu', 'Atendra'][Math.floor(Math.random()*3)];
     return randomEditor;
 }
@@ -69,7 +71,7 @@ const db = {
     team: assignees.map(a => ({
         id: a.name, // using name as id for ease
         name: a.name,
-        role: a.roleInfo === 'Admin' ? 'ADMIN' : a.roleInfo === 'Editor' || a.roleInfo === 'Designer' ? 'CREATOR' : 'SMM',
+        role: a.roleInfo === 'Admin' ? 'ADMIN' : (a.roleInfo === 'Editor' || a.roleInfo === 'Designer') ? 'CREATOR' : 'SMM',
         whatsapp: '',
         active: true
     })),
@@ -189,9 +191,38 @@ try {
         });
     });
 
+    // --- Inject Mahak's Instagram-specific items (visible when logged in as Mahak/SMM) ---
+    const mahakInstaItems = [
+        { title: 'IAT Countdown Reel — 7 Days Left!', channel: 'SciAstra 11th', date: '2026-04-08', status: 'Scripting' },
+        { title: 'NEST 2026 Topper Reaction Reel', channel: 'SciAstra 12th', date: '2026-04-09', status: 'Ideation' },
+        { title: 'Free Homi Class Promo — Instagram Story', channel: 'SciAstra College', date: '2026-04-10', status: 'Ideation' },
+        { title: 'SciAstra App Download Push — Link in Bio', channel: 'SciAstra 11th', date: '2026-04-11', status: 'Ideation' },
+        { title: 'Behind the Scenes — Vivek at Whiteboard', channel: 'SciAstra 12th', date: '2026-04-12', status: 'Ideation' },
+    ];
+    mahakInstaItems.forEach(item => {
+        const key = `${item.date}-${item.channel}-${item.title}`;
+        if (!addedSet.has(key)) {
+            addedSet.add(key);
+            db.items.push({
+                id: uuidv4(),
+                title: item.title,
+                type: 'Content',
+                channel: item.channel,
+                date: item.date,
+                status: item.status,
+                assignees: { smm: 'Mahak', editor: 'Rishav', designer: 'Bhupendra' },
+                campaignId: null,
+                driveLink: '',
+                notes: 'Instagram-specific content for Mahak',
+                approval: 'Pending',
+                auditLog: []
+            });
+        }
+    });
+
     db.items.sort((a,b) => a.date.localeCompare(b.date));
     fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-    console.log(`Successfully seeded ${db.items.length} unique items.`);
+    console.log(`Successfully seeded ${db.items.length} unique items (incl. ${mahakInstaItems.length} Mahak Instagram items).`);
 
 } catch (e) {
     console.error("Failed to seed:", e);
