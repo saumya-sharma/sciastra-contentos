@@ -22,7 +22,7 @@ export async function POST(req: Request) {
         parameters: [
             { name: "name", value: recipientName },
             { name: "title", value: title || 'Content Item' },
-            { name: "channel", value: channel || 'SciAstra' },
+            { name: "channel", value: channel || 'Lume' },
             { name: "time", value: scheduledTime || 'TBD' }
         ],
         template_name: "content_review_alert",
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     // Database logging
-    const filledMessage = `Hi ${recipientName}, your content '${title || 'Content Item'}' on ${channel || 'SciAstra'} is ready for review. Scheduled: ${scheduledTime || 'TBD'}. Please approve on SciAstra ContentOS.`;
+    const filledMessage = `Hi ${recipientName}, your content '${title || 'Content Item'}' on ${channel || 'Lume'} is ready for review. Scheduled: ${scheduledTime || 'TBD'}. Please approve on Lume.`;
     const notificationRecord = {
         id: uuidv4(),
         recipientName,

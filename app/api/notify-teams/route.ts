@@ -123,13 +123,13 @@ export async function POST(req: Request) {
             const htmlBody = `
                 <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:12px;">
                     <div style="background:#639922;padding:12px 20px;border-radius:8px;margin-bottom:20px;">
-                        <span style="color:white;font-weight:700;font-size:18px;">SciAstra ContentOS 📢</span>
+                        <span style="color:white;font-weight:700;font-size:18px;">Lume 📢</span>
                     </div>
                     <p style="font-size:15px;color:#1e293b;">${message.replace(/\n/g, '<br/>')}</p>
                     <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
-                    <p style="font-size:11px;color:#94a3b8;">Sent via SciAstra MarketingOS · ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+                    <p style="font-size:11px;color:#94a3b8;">Sent via Lume · ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
                 </div>`;
-            teamResult.email = await sendZohoMail(emails, subject || `[ContentOS] ${itemTitle}`, htmlBody);
+            teamResult.email = await sendZohoMail(emails, subject || `[Lume] ${itemTitle}`, htmlBody);
         }
 
         if ((channel === 'wati' || channel === 'both') && numbers.length) {

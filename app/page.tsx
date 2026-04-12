@@ -478,11 +478,11 @@ export default function ContentOS() {
                 <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-md">
                     {/* Logo */}
                     <div className="text-center mb-8">
-                        <div className="w-16 h-16 rounded-full bg-white mx-auto mb-4 flex items-center justify-center p-2 shadow-lg border border-slate-700">
-                            <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" className="w-full h-full object-contain" />
+                        <div className="flex items-center justify-center gap-2 mb-3">
+                            <span className="text-3xl leading-none" style={{color:'#e8a020'}}>●</span>
+                            <span className="font-serif text-3xl font-normal text-white tracking-tight" style={{fontFamily:'Georgia, serif', fontStyle:'italic'}}>Lume</span>
                         </div>
-                        <h1 className="text-2xl font-black tracking-tighter">SciAstra <span className="text-[#639922]">ContentOS</span></h1>
-                        <p className="text-slate-500 text-xs mt-1">Internal Content Operations Platform</p>
+                        <p className="text-slate-500 text-xs mt-1">Where content teams ship faster</p>
                     </div>
 
                     {/* Tab toggle */}
@@ -500,7 +500,7 @@ export default function ContentOS() {
                                     value={authEmail}
                                     onChange={e => setAuthEmail(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleSignIn()}
-                                    placeholder="you@sciastra.com"
+                                    placeholder="you@company.com"
                                     className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder-slate-600"
                                 />
                             </div>
@@ -523,10 +523,11 @@ export default function ContentOS() {
                             >
                                 {authLoading ? 'Signing in…' : 'Sign In'}
                             </button>
-                            <p className="text-center text-[10px] text-slate-600">Forgot password? Contact <span className="text-slate-400">saumyaprakash@sciastra.com</span></p>
+                            <p className="text-center text-[10px] text-slate-600">Need help? Contact <span className="text-slate-400">hello@getlume.com</span></p>
                         </div>
                     ) : (
                         <div className="space-y-4">
+                            <p className="text-xs font-bold text-slate-400 text-center -mb-1">Request access to Lume</p>
                             {requestSent ? (
                                 <div className="text-center py-8">
                                     <div className="text-4xl mb-4">✅</div>
@@ -542,7 +543,7 @@ export default function ContentOS() {
                                     </div>
                                     <div>
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Work Email</label>
-                                        <input type="email" value={requestForm.email} onChange={e => setRequestForm(f => ({...f, email: e.target.value}))} placeholder="you@sciastra.com" className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" />
+                                        <input type="email" value={requestForm.email} onChange={e => setRequestForm(f => ({...f, email: e.target.value}))} placeholder="you@company.com" className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" />
                                     </div>
                                     <div>
                                         <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Your Role</label>
@@ -672,16 +673,11 @@ export default function ContentOS() {
             <div className="flex flex-1 overflow-hidden">
                 <aside className="w-64 bg-[#0B1121] border-r border-slate-800 flex flex-col hidden md:flex z-10 transition-all">
                     <div className="p-6">
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 bg-white flex items-center justify-center p-1.5 shadow-sm border border-slate-700">
-                                <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" className="w-full h-full object-contain" onError={(e)=>{(e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).insertAdjacentHTML('afterend','<span class="text-xs font-black text-slate-800">SA</span>');}} />
-                            </div>
+                        <div className="flex items-center gap-2.5 mb-4">
+                            <span className="text-[#e8a020] text-xl leading-none shrink-0">●</span>
                             <div>
-                                <div className="flex items-center gap-1.5 leading-none">
-                                    <span className="text-xl font-black text-white tracking-tight">SciAstra</span>
-                                    <span className="text-[10px] font-black bg-[#639922] text-white px-1.5 py-0.5 rounded leading-none mt-0.5">ContentOS</span>
-                                </div>
-                                <p className="text-xs text-slate-500 font-medium tracking-wide mt-1 leading-none">Content Hub</p>
+                                <span className="text-xl font-normal text-white tracking-tight leading-none" style={{fontFamily:'Georgia, serif', fontStyle:'italic'}}>Lume</span>
+                                <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5 leading-none">Content Operations</p>
                             </div>
                         </div>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
@@ -1140,7 +1136,7 @@ export default function ContentOS() {
                                                                     <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Channel Name *</label>
                                                                     <input type="text" value={newChannelForm.name} onChange={e => setNewChannelForm(f => ({...f, name: e.target.value}))}
                                                                         className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white"
-                                                                        placeholder="e.g. SciAstra LinkedIn" />
+                                                                        placeholder="e.g. My LinkedIn" />
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Platform</label>
@@ -1462,7 +1458,7 @@ export default function ContentOS() {
                                     <div className="max-w-4xl mx-auto bg-[var(--color-surface)] border border-slate-800 p-8 rounded-xl shadow-2xl relative" id="cmo-report-container">
                                          <div className="flex justify-between items-start mb-10 pb-6 border-b border-slate-800">
                                               <div>
-                                                  <h2 className="text-2xl font-black uppercase tracking-tighter">SciAstra Weekly Report</h2>
+                                                  <h2 className="text-2xl font-black uppercase tracking-tighter">Lume Weekly Report</h2>
                                                   <p className="text-slate-400 text-sm mt-1">Automatically generated for Executive Review (<span className="text-slate-200 font-bold">{reportDate || '—'}</span>)</p>
                                               </div>
                                               <button onClick={() => {
@@ -1543,7 +1539,7 @@ export default function ContentOS() {
                     <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-[#0B1121] border border-[#639922]/30 rounded-2xl shadow-2xl z-50 overflow-hidden">
                         <div className="p-6 border-b border-slate-800 bg-[var(--color-surface)] relative overflow-hidden">
                             <div className="absolute right-0 top-0 w-32 h-32 bg-[#639922]/10 blur-3xl"></div>
-                            <h2 className="text-xl font-bold text-white relative">ContentOS Operations Workflow</h2>
+                            <h2 className="text-xl font-bold text-white relative">Lume Operations Workflow</h2>
                             <p className="text-xs text-slate-400 mt-1 relative">Step {tutorialStep} of 5</p>
                         </div>
                         <div className="p-8 h-48 flex items-center justify-center text-center">
@@ -1604,7 +1600,7 @@ export default function ContentOS() {
                     <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-[#0B1121] border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden transform duration-200">
                         <div className="p-6 border-b border-slate-800 bg-[var(--color-surface)]">
                             <h2 className="text-lg font-bold text-white">Onboard New Team Member</h2>
-                            <p className="text-xs text-slate-400 mt-1">Add a new identity to the SciAstra ContentOS platform.</p>
+                            <p className="text-xs text-slate-400 mt-1">Add a new identity to the Lume platform.</p>
                         </div>
                         <div className="p-6 space-y-4">
                             <div>
@@ -1779,7 +1775,7 @@ export default function ContentOS() {
                                                 <>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">First 3 Second Hook (Reel)</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-white" placeholder="Do you know the secret of NISER?" /></div>
                                                     <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Instagram Caption</label><textarea className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm h-20 text-white custom-scrollbar" placeholder="Full details below..." /></div>
-                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Hashtags</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-slate-300" defaultValue="#SciAstra #IISER" /></div>
+                                                    <div><label className="text-[10px] uppercase text-slate-500 mb-1 font-bold block">Hashtags</label><input type="text" className="w-full bg-[#0B1121] border border-slate-800 rounded-lg p-3 text-sm text-slate-300" defaultValue="#Lume #IISER" /></div>
                                                 </>
                                             )}
                                         </div>
@@ -1948,10 +1944,10 @@ export default function ContentOS() {
                                                 const time = selectedItem?.scheduledTime || '–';
                                                 if (notifyMessageType === 'custom') return notifyCustomMsg || '(type your message above)';
                                                 const templates: Record<string, string> = {
-                                                    batch_live:    `Hi ${teamLabels}, a new ${selectedItem?.channel || ''} post is going live on ${dateStr} at ${time}: "${selectedItem?.title || ''}". Please prepare for increased enquiries. — SciAstra MarketingOS`,
-                                                    result_post:   `Hi ${teamLabels}, a result/achievement post is scheduled: "${selectedItem?.title || ''}" (${selectedItem?.channel || ''}) on ${dateStr}. Stand by for engagement. — SciAstra MarketingOS`,
-                                                    campaign_align:`Hi ${teamLabels}, campaign content "${selectedItem?.title || ''}" is launching on ${dateStr}. All teams please align your workflows accordingly. — SciAstra MarketingOS`,
-                                                    urgent_review: `URGENT — Hi ${teamLabels}, the content "${selectedItem?.title || ''}" requires an immediate review. Please check SciAstra ContentOS now. — SciAstra MarketingOS`,
+                                                    batch_live:    `Hi ${teamLabels}, a new ${selectedItem?.channel || ''} post is going live on ${dateStr} at ${time}: "${selectedItem?.title || ''}". Please prepare for increased enquiries. — Lume`,
+                                                    result_post:   `Hi ${teamLabels}, a result/achievement post is scheduled: "${selectedItem?.title || ''}" (${selectedItem?.channel || ''}) on ${dateStr}. Stand by for engagement. — Lume`,
+                                                    campaign_align:`Hi ${teamLabels}, campaign content "${selectedItem?.title || ''}" is launching on ${dateStr}. All teams please align your workflows accordingly. — Lume`,
+                                                    urgent_review: `URGENT — Hi ${teamLabels}, the content "${selectedItem?.title || ''}" requires an immediate review. Please check Lume now. — Lume`,
                                                 };
                                                 return templates[notifyMessageType] || '';
                                             };
@@ -1967,7 +1963,7 @@ export default function ContentOS() {
                                                             teams: notifyTeams,
                                                             channel: notifyChannel,
                                                             message: buildPreview(),
-                                                            subject: `[ContentOS] ${selectedItem?.title || 'Update'}`,
+                                                            subject: `[Lume] ${selectedItem?.title || 'Update'}`,
                                                             itemTitle: selectedItem?.title,
                                                             itemChannel: selectedItem?.channel,
                                                             scheduledDate: selectedItem?.date,
@@ -2296,8 +2292,8 @@ export default function ContentOS() {
                                                 ? `${briefTitle}\n\nMost ${briefAudience || 'students'} have no idea about this.\n\n${briefKeyPoints ? `Key insight: ${briefKeyPoints.split(',')[0]}\n\n` : ''}Save this post before it disappears from your feed.\n\n${briefCTA || 'Drop a 🔥 if this was helpful!'}`
                                                 : `${briefTitle}\n\n${briefGoal ? `Our goal: ${briefGoal}` : 'Watch till the end — the last point changes everything.'}\n\n${briefCTA || 'Subscribe for more science content!'}`,
                                             hashtags: isIG
-                                                ? '#SciAstra #JEE2026 #NITvIISER #ScienceEducation #IndianStudents #StudyMotivation'
-                                                : '#SciAstra #Education #JEE #NEET #ScienceIndia',
+                                                ? '#Lume #JEE2026 #NITvIISER #ScienceEducation #IndianStudents #StudyMotivation'
+                                                : '#Lume #Education #JEE #NEET #ScienceIndia',
                                             cta: briefCTA || (isYT ? 'Subscribe & hit the bell 🔔' : 'Save + share with a friend who needs this 📲'),
                                             angles: [
                                                 `The Shock Angle: Lead with a counter-intuitive stat about ${briefTitle.split(' ').slice(0,3).join(' ')}`,
@@ -2307,8 +2303,8 @@ export default function ContentOS() {
                                                 `The FOMO Angle: "Most students find out too late — don't be one of them"`,
                                             ],
                                             thumbnail: isYT
-                                                ? `Bold text overlay: "${briefTitle.split(' ').slice(0,4).join(' ').toUpperCase()}" — dark background, high-contrast neon accent, shocked/serious face expression, SciAstra logo bottom-right`
-                                                : `Carousel cover: clean white card, bold headline text, SciAstra brand color accent strip`,
+                                                ? `Bold text overlay: "${briefTitle.split(' ').slice(0,4).join(' ').toUpperCase()}" — dark background, high-contrast neon accent, shocked/serious face expression, Lume logo bottom-right`
+                                                : `Carousel cover: clean white card, bold headline text, Lume brand color accent strip`,
                                             scores: { hook: 8, trend: 7, cta: 9, fit: 8, overall: 80 },
                                         });
                                         setBriefGenerating(false);

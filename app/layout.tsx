@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'SciAstra ContentOS',
-  description: 'Command Centre for SciAstra Marketing',
+  title: 'Lume — Content Operations',
+  description: 'Lume — The content ops platform for teams who ship.',
 };
 
 export default function RootLayout({

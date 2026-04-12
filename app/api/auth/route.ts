@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'mysaumya38@gmail.com';
-const OFFICE_ADMIN_EMAIL = process.env.OFFICE_ADMIN_EMAIL || 'saumyaprakash@sciastra.com';
+const OFFICE_ADMIN_EMAIL = process.env.OFFICE_ADMIN_EMAIL || 'hello@getlume.com';
 
 // GET: fetch user role by email, OR list pending invites
 export async function GET(req: Request) {
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ role: null, message: 'Access pending approval. Contact saumyaprakash@sciastra.com' });
+    return NextResponse.json({ role: null, message: 'Access pending approval. Contact hello@getlume.com' });
   }
   if (!data.is_active) {
     return NextResponse.json({ role: null, message: 'Your account has been deactivated. Contact your admin.' });

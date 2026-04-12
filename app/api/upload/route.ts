@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
-    const relatedItemTitle = formData.get('title') || 'ContentOS Upload';
+    const relatedItemTitle = formData.get('title') || 'Lume Upload';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
