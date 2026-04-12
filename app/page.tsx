@@ -168,7 +168,7 @@ export default function ContentOS() {
             setNotifications(data.notifications || []);
             if (data.config) setConfig(data.config);
             setLoading(false);
-        });
+        }).catch(() => setLoading(false));
         fetch('/api/analytics').then(res => res.json()).then(data => {
             if (!data.error) setAnalyticsData(data);
         }).catch(() => {});
