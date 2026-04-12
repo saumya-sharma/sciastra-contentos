@@ -56,6 +56,19 @@ export default function ContentOS() {
         process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
     ), []);
+
+    // Authenticated fetch — automatically attaches the Supabase Bearer token
+    const authFetch = useCallback(async (url: string, init: RequestInit = {}): Promise<Response> => {
+        const { data } = await supabaseBrowser.auth.getSession();
+        const token = data.session?.access_token;
+        const headers = new Headers(init.headers);
+        if (token) headers.set('Authorization', `Bearer ${token}`);
+        if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
+            headers.set('Content-Type', 'application/json');
+        }
+        return fetch(url, { ...init, headers });
+    }, [supabaseBrowser]);
+
     const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'|'invites'>('members');
     const [channelConfig, setChannelConfig] = useState<Channel[]>(DEFAULT_CHANNELS);
     const [showAddChannelForm, setShowAddChannelForm] = useState(false);
@@ -63,6 +76,7 @@ export default function ContentOS() {
     const [reportDate, setReportDate] = useState('');
     const [isDark, setIsDark] = useState(true);
     const [mounted, setMounted] = useState(false);
+    const [showMobileSidebar, setShowMobileSidebar] = useState(false);
     
     // Auth & Roles — DO NOT read from localStorage (old role-selector system is deprecated)
     // Supabase session check in useEffect sets these
@@ -82,6 +96,15 @@ export default function ContentOS() {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [pendingInvites, setPendingInvites] = useState<any[]>([]);
     const [showDirectInvite, setShowDirectInvite] = useState(false);
+
+    // Share link modal
+    const [showShareModal, setShowShareModal] = useState<'calendar' | 'pipeline' | null>(null);
+    const [shareLabel, setShareLabel] = useState('');
+    const [shareExpiry, setShareExpiry] = useState<0 | 7 | 30>(0);
+    const [shareGenerating, setShareGenerating] = useState(false);
+    const [shareGeneratedUrl, setShareGeneratedUrl] = useState('');
+    const [shareLinks, setShareLinks] = useState<any[]>([]);
+    const [shareLinksLoading, setShareLinksLoading] = useState(false);
     const [directInviteForm, setDirectInviteForm] = useState({ name: '', email: '', role: 'SMM' });
 
     // Drawer state
@@ -188,7 +211,7 @@ export default function ContentOS() {
     // Fetch app data whenever role is set
     useEffect(() => {
         if (!role) return;
-        fetch('/api/db').then(res => res.json()).then(data => {
+        authFetch('/api/db').then(res => res.json()).then(data => {
             setItems(data.items || []);
             setTeam(data.team || []);
             setCampaigns(data.campaigns || []);
@@ -196,15 +219,15 @@ export default function ContentOS() {
             if (data.config) setConfig(data.config);
             setLoading(false);
         }).catch(() => setLoading(false));
-        fetch('/api/analytics').then(res => res.json()).then(data => {
+        authFetch('/api/analytics').then(res => res.json()).then(data => {
             if (!data.error) setAnalyticsData(data);
-        }).catch(() => {});
-        fetch('/api/cron').catch(() => {});
+        }).catch((e) => console.error('[analytics]', e));
+        authFetch('/api/cron').catch(() => {});
         fetch('/api/notify-teams').then(r => r.json()).then(cfg => {
             setZohoEnabled(!!cfg.zohoConfigured);
             setWatiEnabled(!!cfg.watiConfigured);
         }).catch(() => {});
-    }, [role]);
+    }, [role, authFetch]);
 
     const toggleDarkMode = () => {
         const newDark = !isDark;
@@ -229,9 +252,8 @@ export default function ContentOS() {
             startDate: newCampaignForm.startDate,
             endDate: newCampaignForm.endDate,
         };
-        await fetch('/api/db', {
+        await authFetch('/api/db', {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ _action: 'CREATE_CAMPAIGN', campaign: newCamp }),
         });
         setCampaigns(prev => [...prev, newCamp]);
@@ -259,10 +281,10 @@ export default function ContentOS() {
 
     const triggerWhatsApp = async (item: Item) => {
         setToast('Sending...');
-        await fetch('/api/notify', {
+        await authFetch('/api/notify', {
              method: 'POST', body: JSON.stringify({
                  recipientName: item.assignees?.smm || 'Admin',
-                 whatsappNumber: '+919999999999', 
+                 whatsappNumber: '+919999999999',
                  notificationType: 'Manual Trigger',
                  title: item.title,
                  channel: item.channel,
@@ -280,7 +302,7 @@ export default function ContentOS() {
     };
 
     const refreshData = async () => {
-        const data = await fetch('/api/db').then(r => r.json());
+        const data = await authFetch('/api/db').then(r => r.json());
         setItems(data.items || []);
         setCampaigns(data.campaigns || []);
         setTeam(data.team || []);
@@ -309,9 +331,8 @@ export default function ContentOS() {
             setItems(prev => [...prev, newItem]);
             setSelectedItem(newItem);
             // Write to DB + refresh so calendar and kanban are in sync
-            await fetch('/api/db', {
+            await authFetch('/api/db', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ _action: 'CREATE_ITEM', item: newItem }),
             });
             showSavedToast();
@@ -327,12 +348,12 @@ export default function ContentOS() {
         setItems(optimistic);
         if (selectedItem?.id === item.id) setSelectedItem({ ...item, ...payloadChanges, auditLog: [...(selectedItem.auditLog||[]), optimisticLog] } as Item);
         
-        await fetch('/api/db', { method: 'PUT', body: JSON.stringify(payload) });
+        await authFetch('/api/db', { method: 'PUT', body: JSON.stringify(payload) });
         showSavedToast();
 
         // Trigger Webhook if status hit specific targets
         if (payloadChanges.status === 'Ready to Publish' || payloadChanges.status === 'Sent to Editor') {
-            await fetch('/api/notify', {
+            await authFetch('/api/notify', {
                  method: 'POST', body: JSON.stringify({
                      recipientName: item.assignees?.smm || 'Admin',
                      whatsappNumber: '+910000000000',
@@ -348,7 +369,7 @@ export default function ContentOS() {
         const payload = { _action: 'UPDATE_TEAM', member };
         const optimistic = [...team.filter(t => t.id !== member.id), member];
         setTeam(optimistic);
-        await fetch('/api/db', { method: 'PUT', body: JSON.stringify(payload) });
+        await authFetch('/api/db', { method: 'PUT', body: JSON.stringify(payload) });
     };
 
     const handleDeactivate = (member: TeamMember) => {
@@ -371,7 +392,7 @@ export default function ContentOS() {
         formData.append('title', selectedItem.title);
 
         try {
-            const res = await fetch('/api/upload', { method: 'POST', body: formData });
+            const res = await authFetch('/api/upload', { method: 'POST', body: formData });
             const data = await res.json();
             
             if (data.success) {
@@ -381,10 +402,10 @@ export default function ContentOS() {
                 setToast('Asset saved! Pinging SMM via WhatsApp...');
                 
                 if (selectedItem.assignees?.smm) {
-                    await fetch('/api/notify', {
+                    await authFetch('/api/notify', {
                         method: 'POST',
                         body: JSON.stringify({
-                            recipientName: selectedItem.assignees.smm, 
+                            recipientName: selectedItem.assignees.smm,
                             whatsappNumber: '+910000000000',
                             notificationType: 'Asset Uploaded',
                             message: `Asset ready for "${selectedItem.title}". Please review.`,
@@ -404,6 +425,38 @@ export default function ContentOS() {
 
     const getBorderClass = (chName: string) => CHANNELS.find(x => x.name === chName)?.cls || 'border-l-slate-500';
     const getBgClass = (chName: string) => CHANNELS.find(x => x.name === chName)?.bg || 'bg-slate-900/30';
+
+    const openShareModal = async (type: 'calendar' | 'pipeline') => {
+        setShowShareModal(type);
+        setShareLabel('');
+        setShareExpiry(0);
+        setShareGeneratedUrl('');
+        setShareLinksLoading(true);
+        const data = await authFetch('/api/share?list=1').then(r => r.json());
+        setShareLinks((data.links || []).filter((l: any) => l.type === type));
+        setShareLinksLoading(false);
+    };
+
+    const generateShareLink = async () => {
+        if (!showShareModal) return;
+        setShareGenerating(true);
+        const data = await authFetch('/api/share', {
+            method: 'POST',
+            body: JSON.stringify({ type: showShareModal, label: shareLabel, expiryDays: shareExpiry || null }),
+        }).then(r => r.json());
+        if (data.success) {
+            const base = typeof window !== 'undefined' ? window.location.origin : '';
+            const path = showShareModal === 'pipeline' ? `/share/pipeline/${data.link.token}` : `/share/${data.link.token}`;
+            setShareGeneratedUrl(`${base}${path}`);
+            setShareLinks(prev => [data.link, ...prev]);
+        }
+        setShareGenerating(false);
+    };
+
+    const revokeShareLink = async (id: string) => {
+        await authFetch(`/api/share?id=${id}`, { method: 'DELETE' });
+        setShareLinks(prev => prev.filter(l => l.id !== id));
+    };
 
     let visibleItems = items;
     if (role === 'SMM') {
@@ -671,14 +724,29 @@ export default function ContentOS() {
             )}
 
             <div className="flex flex-1 overflow-hidden">
-                <aside className="w-64 bg-[#0B1121] border-r border-slate-800 flex flex-col hidden md:flex z-10 transition-all">
+                {/* Mobile sidebar backdrop */}
+                {showMobileSidebar && (
+                    <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setShowMobileSidebar(false)} />
+                )}
+                <aside className={`w-64 bg-[#0B1121] border-r border-slate-800 flex flex-col z-40 transition-transform duration-300
+                    md:relative md:translate-x-0 md:flex
+                    fixed inset-y-0 left-0
+                    ${showMobileSidebar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+                `}>
                     <div className="p-6">
-                        <div className="flex items-center gap-2.5 mb-4">
-                            <span className="text-[#e8a020] text-xl leading-none shrink-0">●</span>
-                            <div>
-                                <span className="text-xl font-normal text-white tracking-tight leading-none" style={{fontFamily:'Georgia, serif', fontStyle:'italic'}}>Lume</span>
-                                <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5 leading-none">Content Operations</p>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-[#e8a020] text-xl leading-none shrink-0">●</span>
+                                <div>
+                                    <span className="text-xl font-normal text-white tracking-tight leading-none" style={{fontFamily:'Georgia, serif', fontStyle:'italic'}}>Lume</span>
+                                    <p className="text-[10px] text-slate-500 font-medium tracking-wide mt-0.5 leading-none">Content Operations</p>
+                                </div>
                             </div>
+                            <button
+                                onClick={() => setShowMobileSidebar(false)}
+                                className="md:hidden w-6 h-6 flex items-center justify-center text-slate-500 hover:text-white transition"
+                                aria-label="Close menu"
+                            >✕</button>
                         </div>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
                             {role === 'ADMIN' ? 'Admin' : role === 'SMM' ? 'SMM' : 'Creator'} | {userName.split(' ')[0] || 'You'}
@@ -686,19 +754,19 @@ export default function ContentOS() {
                     </div>
                     <nav className="flex-1 px-4 space-y-2">
                         {role === 'CREATOR' ? (
-                            <button onClick={() => setActiveTab('pipeline')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'pipeline' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Task Inbox</button>
+                            <button onClick={() => { setActiveTab('pipeline'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'pipeline' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Task Inbox</button>
                         ) : (
                             <>
-                                <button onClick={() => setActiveTab('pipeline')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'pipeline' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Kanban Board</button>
-                                <button onClick={() => setActiveTab('calendar')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'calendar' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Calendar Matrix</button>
-                                <button onClick={() => setActiveTab('campaigns')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'campaigns' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Campaign Hub</button>
+                                <button onClick={() => { setActiveTab('pipeline'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'pipeline' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Kanban Board</button>
+                                <button onClick={() => { setActiveTab('calendar'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'calendar' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Calendar Matrix</button>
+                                <button onClick={() => { setActiveTab('campaigns'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'campaigns' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Campaign Hub</button>
                             </>
                         )}
                         {role === 'ADMIN' && (
                             <>
-                                <button onClick={() => setActiveTab('analytics')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'analytics' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Operations Analytics</button>
-                                <button onClick={() => setActiveTab('cmo-report')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'cmo-report' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>CMO Report</button>
-                                <button onClick={() => setActiveTab('team')} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'team' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Team Management</button>
+                                <button onClick={() => { setActiveTab('analytics'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'analytics' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Operations Analytics</button>
+                                <button onClick={() => { setActiveTab('cmo-report'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'cmo-report' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>CMO Report</button>
+                                <button onClick={() => { setActiveTab('team'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'team' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Team Management</button>
                             </>
                         )}
                     </nav>
@@ -721,8 +789,16 @@ export default function ContentOS() {
                 </aside>
 
                 <main className="flex-1 relative flex flex-col bg-[var(--color-background)] overflow-hidden">
-                    <header className="h-16 border-b border-slate-800 flex items-center px-6 justify-between bg-[#0B1121]/90 backdrop-blur z-20 shrink-0">
-                        <div className="flex items-center gap-4">
+                    <header className="h-16 border-b border-slate-800 flex items-center px-4 md:px-6 justify-between bg-[#0B1121]/90 backdrop-blur z-20 shrink-0">
+                        <div className="flex items-center gap-3">
+                            {/* Hamburger — mobile only */}
+                            <button
+                                onClick={() => setShowMobileSidebar(true)}
+                                className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition shrink-0"
+                                aria-label="Open menu"
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                            </button>
                             <h2 className="text-lg font-bold capitalize">{activeTab.replace('-', ' ')}</h2>
                             
                             {/* Filter Bar */}
@@ -730,7 +806,7 @@ export default function ContentOS() {
                                 <div className="flex gap-2 ml-4">
                                     <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)} className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 outline-none">
                                         <option value="">All Channels</option>
-                                        {channelConfig.filter(c => c.name !== 'Exams' && !c.archived).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                        {channelConfig.filter(c => c.name !== 'Exams' && !c.archived).map(c => <option key={c.name} value={c.name}>{c.name.replace('SciAstra ', '')}</option>)}
                                     </select>
                                     <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 outline-none max-w-[150px]">
                                         <option value="">All Campaigns</option>
@@ -742,6 +818,12 @@ export default function ContentOS() {
 
                         {activeTab === 'calendar' && (
                             <div className="flex items-center gap-2">
+                                {role === 'ADMIN' && (
+                                    <button onClick={() => openShareModal('calendar')} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-[#639922]/20 border border-slate-700 hover:border-[#639922]/50 text-slate-400 hover:text-[#639922] text-[11px] font-bold tracking-wide transition">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                                        Share Calendar
+                                    </button>
+                                )}
                                 {/* View mode toggle */}
                                 <div className="flex bg-slate-900 rounded p-1 border border-slate-800">
                                     <button onClick={()=>setViewMode('week')} className={`px-3 py-1 rounded text-xs transition ${viewMode==='week'?'bg-[#639922] text-white':'text-slate-400 hover:text-white'}`}>Week Grid</button>
@@ -774,7 +856,16 @@ export default function ContentOS() {
                         ) : (
                             <>
                                 {activeTab === 'pipeline' && (
-                                    <div className="flex gap-4 md:gap-6 h-full items-start overflow-x-auto pb-4">
+                                    <div className="flex flex-col h-full">
+                                        {role === 'ADMIN' && (
+                                            <div className="flex justify-end mb-3 shrink-0">
+                                                <button onClick={() => openShareModal('pipeline')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-[#639922]/20 border border-slate-700 hover:border-[#639922]/50 text-slate-400 hover:text-[#639922] text-[11px] font-bold tracking-wide transition">
+                                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                                                    Share Pipeline
+                                                </button>
+                                            </div>
+                                        )}
+                                    <div className="flex gap-4 md:gap-6 flex-1 items-start overflow-x-auto pb-4">
                                         {STATUSES.map(status => (
                                             <div 
                                                 key={status} 
@@ -828,6 +919,7 @@ export default function ContentOS() {
                                             </div>
                                         ))}
                                     </div>
+                                    </div>
                                 )}
 
                                 {activeTab === 'calendar' && viewMode === 'week' && (() => {
@@ -854,7 +946,7 @@ export default function ContentOS() {
                                     });
                                     return (
                                    <div className="overflow-x-auto h-full">
-                                        <div className="min-w-[1000px] bg-[var(--color-surface)] border border-slate-800 rounded-xl">
+                                        <div className="min-w-[900px] bg-[var(--color-surface)] border border-slate-800 rounded-xl">
                                             {/* Header row */}
                                             <div className="grid grid-cols-[150px_repeat(7,_1fr)] border-b border-slate-800 bg-slate-900/50">
                                                 <div className="p-3 font-bold text-slate-500 border-r border-slate-800 text-xs text-center uppercase tracking-wider">Channel</div>
@@ -975,7 +1067,7 @@ export default function ContentOS() {
                                             {role === 'ADMIN' && (
                                                 <button
                                                     onClick={() => {
-                                                        setNewCampaignForm({ name: '', target: '', exam: '', color: '#639922' });
+                                                        setNewCampaignForm({ name: '', target: '', exam: 'None', startDate: '', endDate: '' });
                                                         setShowNewCampaignModal(true);
                                                     }}
                                                     className="bg-[#639922] hover:bg-[#4d7a18] text-white px-4 py-2 rounded-lg text-xs font-black transition shadow flex items-center gap-2"
@@ -1009,10 +1101,10 @@ export default function ContentOS() {
                                                                             if (!window.confirm(`Delete campaign "${camp.name}"?\n\nContent items linked to it will become Standalone Posts.`)) return;
                                                                             // Set linked items campaignId to null
                                                                             for (const itm of campItems) {
-                                                                                await fetch('/api/db', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: itm.id, updates: { campaignId: null }, actor: userName }) });
+                                                                                await authFetch('/api/db', { method: 'PUT', body: JSON.stringify({ id: itm.id, updates: { campaignId: null }, actor: userName }) });
                                                                             }
                                                                             // Delete the campaign
-                                                                            await fetch(`/api/db?id=${camp.id}&_action=DELETE_CAMPAIGN`, { method: 'DELETE' });
+                                                                            await authFetch(`/api/db?id=${camp.id}&_action=DELETE_CAMPAIGN`, { method: 'DELETE' });
                                                                             await refreshData();
                                                                             setToast(`Campaign "${camp.name}" deleted`);
                                                                         }}
@@ -1270,7 +1362,7 @@ export default function ContentOS() {
                                                                 <button
                                                                     onClick={async () => {
                                                                         if (!directInviteForm.email || !directInviteForm.name) return;
-                                                                        await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'direct_invite', ...directInviteForm }) });
+                                                                        await authFetch('/api/auth', { method: 'POST', body: JSON.stringify({ _action: 'direct_invite', ...directInviteForm }) });
                                                                         setShowDirectInvite(false);
                                                                         setDirectInviteForm({name:'',email:'',role:'SMM'});
                                                                         setToast('Invite sent! ✅');
@@ -1297,7 +1389,7 @@ export default function ContentOS() {
                                                                         <button
                                                                             onClick={async () => {
                                                                                 if (!window.confirm(`Approve ${inv.name} as ${inv.requested_role}?`)) return;
-                                                                                await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'approve_invite', inviteId: inv.id, email: inv.email, name: inv.name, role: inv.requested_role }) });
+                                                                                await authFetch('/api/auth', { method: 'POST', body: JSON.stringify({ _action: 'approve_invite', inviteId: inv.id, email: inv.email, name: inv.name, role: inv.requested_role }) });
                                                                                 setPendingInvites(p => p.filter(i => i.id !== inv.id));
                                                                                 setToast(`${inv.name} approved & invite email sent ✅`);
                                                                             }}
@@ -1306,7 +1398,7 @@ export default function ContentOS() {
                                                                         <button
                                                                             onClick={async () => {
                                                                                 if (!window.confirm(`Reject request from ${inv.name}?`)) return;
-                                                                                await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'reject_invite', inviteId: inv.id }) });
+                                                                                await authFetch('/api/auth', { method: 'POST', body: JSON.stringify({ _action: 'reject_invite', inviteId: inv.id }) });
                                                                                 setPendingInvites(p => p.filter(i => i.id !== inv.id));
                                                                             }}
                                                                             className="px-3 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs font-bold transition"
@@ -1412,7 +1504,7 @@ export default function ContentOS() {
                                                     <h3 className="font-bold text-white">Exam Readiness (Campaign Linked)</h3>
                                                     <button onClick={() => {
                                                         setToast('Syncing live dates via Cron...');
-                                                        fetch('/api/cron').then(res=>res.json()).then(data=>{
+                                                        authFetch('/api/cron').then(res=>res.json()).then(data=>{
                                                             setToast(data.message);
                                                             setTimeout(() => window.location.reload(), 1500);
                                                         });
@@ -1651,7 +1743,12 @@ export default function ContentOS() {
             {selectedItem && (
                 <>
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity" onClick={() => setSelectedItem(null)} />
-                    <div className="fixed top-0 right-0 w-full max-w-xl h-full bg-[#0B1121] border-l border-slate-800 z-50 flex flex-col shadow-2xl overflow-hidden transform duration-300 ease-out">
+                    <div className="fixed z-50 flex flex-col shadow-2xl overflow-hidden transform duration-300 ease-out bg-[#0B1121]
+                        /* Mobile: bottom sheet */
+                        bottom-0 left-0 right-0 h-[85vh] rounded-t-2xl border-t border-slate-800
+                        /* Desktop: right panel */
+                        md:top-0 md:right-0 md:bottom-auto md:left-auto md:h-full md:w-full md:max-w-xl md:rounded-none md:border-t-0 md:border-l md:border-slate-800
+                    ">
                         <header className="p-6 md:p-8 border-b border-slate-800 flex justify-between items-start bg-[var(--color-surface)] relative group">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-[#639922] blur-[100px] opacity-10 pointer-events-none group-hover:opacity-20 transition duration-700"></div>
                             
@@ -1956,9 +2053,8 @@ export default function ContentOS() {
                                                 setNotifySending(true);
                                                 setNotifyResult('');
                                                 try {
-                                                    const res = await fetch('/api/notify-teams', {
+                                                    const res = await authFetch('/api/notify-teams', {
                                                         method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify({
                                                             teams: notifyTeams,
                                                             channel: notifyChannel,
@@ -2103,7 +2199,7 @@ export default function ContentOS() {
                                                         <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition">Cancel</button>
                                                         <button
                                                             onClick={async () => {
-                                                                await fetch(`/api/db?id=${selectedItem.id}`, { method: 'DELETE' });
+                                                                await authFetch(`/api/db?id=${selectedItem.id}`, { method: 'DELETE' });
                                                                 setSelectedItem(null);
                                                                 setDeleteConfirm(false);
                                                                 await refreshData();
@@ -2121,6 +2217,77 @@ export default function ContentOS() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* ── Share Link Modal ─────────────────────────────────────────── */}
+            {showShareModal && (
+                <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setShowShareModal(null)}>
+                    <div className="bg-[#0B1121] border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <h2 className="text-white font-black text-lg tracking-tight">
+                                Share {showShareModal === 'calendar' ? 'Calendar' : 'Pipeline'}
+                            </h2>
+                            <button onClick={() => setShowShareModal(null)} className="text-slate-400 hover:text-white text-xl leading-none transition">✕</button>
+                        </div>
+
+                        {!shareGeneratedUrl ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Label (optional)</label>
+                                    <input value={shareLabel} onChange={e => setShareLabel(e.target.value)} placeholder="e.g. Takshila School View" className="w-full bg-[#1E293B] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] uppercase font-bold text-slate-500 block mb-2 tracking-widest">Link Expiry</label>
+                                    <div className="flex gap-2">
+                                        {([0, 7, 30] as const).map(d => (
+                                            <button key={d} onClick={() => setShareExpiry(d)} className={`flex-1 py-2 rounded-lg border text-xs font-bold transition ${shareExpiry === d ? 'bg-[#639922] border-[#639922] text-white' : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white'}`}>
+                                                {d === 0 ? 'No expiry' : `${d} days`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <button onClick={generateShareLink} disabled={shareGenerating} className="w-full py-3 rounded-xl bg-[#639922] hover:bg-[#4d7a18] disabled:opacity-50 text-white font-black text-sm transition">
+                                    {shareGenerating ? 'Generating…' : 'Generate Link →'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-xs text-[#639922] font-bold">Link generated!</p>
+                                <div className="flex gap-2">
+                                    <input readOnly value={shareGeneratedUrl} className="flex-1 bg-[#1E293B] border border-slate-700 rounded-lg p-2.5 text-xs text-slate-300 font-mono outline-none" />
+                                    <button onClick={() => navigator.clipboard.writeText(shareGeneratedUrl).then(() => setToast('Link copied!'))} className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition shrink-0">Copy</button>
+                                </div>
+                                <button onClick={() => { setShareGeneratedUrl(''); setShareLabel(''); }} className="text-xs text-slate-500 hover:text-slate-300 transition">← Generate another</button>
+                            </div>
+                        )}
+
+                        {/* Existing links */}
+                        <div className="mt-6 border-t border-slate-800 pt-5">
+                            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-3">Active Links</p>
+                            {shareLinksLoading ? (
+                                <p className="text-slate-600 text-sm">Loading…</p>
+                            ) : shareLinks.length === 0 ? (
+                                <p className="text-slate-600 text-xs italic">No active share links yet</p>
+                            ) : (
+                                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                                    {shareLinks.map((link: any) => (
+                                        <div key={link.id} className="flex items-center justify-between gap-3 bg-slate-900/50 rounded-lg px-3 py-2.5">
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-white font-medium truncate">{link.label || 'Untitled link'}</p>
+                                                <p className="text-[10px] text-slate-500 font-mono truncate">…/{link.token.slice(0, 12)}…</p>
+                                                {link.expires_at && <p className="text-[9px] text-slate-600">Expires {new Date(link.expires_at).toLocaleDateString()}</p>}
+                                            </div>
+                                            <div className="flex gap-2 shrink-0">
+                                                <button onClick={() => { const base = window.location.origin; const path = link.type === 'pipeline' ? `/share/pipeline/${link.token}` : `/share/${link.token}`; navigator.clipboard.writeText(`${base}${path}`).then(() => setToast('Copied!')); }} className="text-[10px] font-bold text-slate-400 hover:text-white transition px-2 py-1 rounded bg-slate-800 hover:bg-slate-700">Copy</button>
+                                                <button onClick={() => revokeShareLink(link.id)} className="text-[10px] font-bold text-red-400 hover:text-red-300 transition px-2 py-1 rounded bg-red-900/20 hover:bg-red-900/40">Revoke</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* ── AI Brief Studio — Full-screen modal ─────────────────────── */}

@@ -6,7 +6,23 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Lume — Content Operations',
-  description: 'Lume — The content ops platform for teams who ship.',
+  description: 'The content ops platform for teams who ship. Pipeline, calendar, campaigns, AI briefs — one place.',
+  openGraph: {
+    title: 'Lume — Content Operations',
+    description: 'From idea to published. No chaos.',
+    url: 'https://getlume.com',
+    siteName: 'Lume',
+    images: [{ url: 'https://getlume.com/og.png', width: 1200, height: 630 }],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Lume',
+    description: 'From idea to published. No chaos.',
+  },
+  icons: {
+    icon: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({

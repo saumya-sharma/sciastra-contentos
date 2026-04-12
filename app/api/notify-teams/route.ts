@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '@/lib/requireAuth';
 
-// Team email mapping
+// Team email mapping (static — these are role-level distribution addresses)
 const TEAM_EMAILS: Record<string, string[]> = {
     marketing: ['mahak@sciastra.com', 'priya@sciastra.com', 'ritika@sciastra.com'],
     sales:     ['sales@sciastra.com'],
@@ -11,14 +11,39 @@ const TEAM_EMAILS: Record<string, string[]> = {
     founders:  ['vivek@sciastra.com', 'akhil@sciastra.com'],
 };
 
-// Team WhatsApp numbers (pulled from db.json team data at runtime, these are fallbacks)
-const TEAM_WHATSAPP: Record<string, string[]> = {
-    marketing: ['+919000000001', '+919000000002', '+919000000003'],
-    sales:     ['+919000000004'],
-    operations:['+919000000005'],
-    academic:  ['+919000000006'],
-    founders:  ['+919000000007', '+919000000008'],
+// Team role → WhatsApp group keywords (matches team_members.role values)
+const TEAM_ROLE_MAP: Record<string, string[]> = {
+    marketing: ['SMM', 'MARKETING'],
+    sales:     ['SALES'],
+    operations:['OPS', 'OPERATIONS'],
+    academic:  ['ACADEMIC', 'CREATOR'],
+    founders:  ['ADMIN'],
 };
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
+async function getWhatsAppNumbers(teams: string[]): Promise<string[]> {
+    const roles = teams.flatMap(t => TEAM_ROLE_MAP[t] || []);
+    if (!roles.length) return [];
+
+    const { data, error } = await supabase
+        .from('team_members')
+        .select('whatsapp, role')
+        .in('role', roles)
+        .eq('active', true);
+
+    if (error) {
+        console.error('[notify-teams] Failed to fetch WhatsApp numbers from DB:', error);
+        return [];
+    }
+
+    return (data || [])
+        .map((m: any) => m.whatsapp)
+        .filter((n: string) => n && n.startsWith('+'));
+}
 
 async function getZohoAccessToken(): Promise<string | null> {
     const clientId     = process.env.ZOHO_CLIENT_ID;
@@ -46,8 +71,8 @@ async function getZohoAccessToken(): Promise<string | null> {
 }
 
 async function sendZohoMail(to: string[], subject: string, body: string): Promise<'sent' | 'mock' | 'failed'> {
-    const accountId  = process.env.ZOHO_ACCOUNT_ID;
-    const fromEmail  = process.env.ZOHO_FROM_EMAIL || 'noreply@sciastra.com';
+    const accountId   = process.env.ZOHO_ACCOUNT_ID;
+    const fromEmail   = process.env.ZOHO_FROM_EMAIL || 'noreply@getlume.com';
     const accessToken = await getZohoAccessToken();
 
     if (!accessToken || !accountId) return 'mock';
@@ -100,23 +125,25 @@ async function sendWatiMessage(number: string, message: string): Promise<'sent' 
 }
 
 export async function POST(req: Request) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json();
     const {
-        teams,           // string[] e.g. ['marketing','sales']
-        channel,         // 'zoho' | 'wati' | 'both'
-        message,         // final composed message string
-        subject,         // email subject
+        teams,        // string[] e.g. ['marketing','sales']
+        channel,      // 'zoho' | 'wati' | 'both'
+        message,      // final composed message string
+        subject,      // email subject
         itemTitle,
-        itemChannel,
-        scheduledDate,
     } = body;
+
+    // Pull live WhatsApp numbers from team_members table
+    const allNumbers = await getWhatsAppNumbers(teams as string[]);
 
     const results: Record<string, any> = {};
 
     for (const team of (teams as string[])) {
-        const emails   = TEAM_EMAILS[team]  || [];
-        const numbers  = TEAM_WHATSAPP[team] || [];
-
+        const emails = TEAM_EMAILS[team] || [];
         const teamResult: Record<string, string> = {};
 
         if ((channel === 'zoho' || channel === 'both') && emails.length) {
@@ -132,38 +159,37 @@ export async function POST(req: Request) {
             teamResult.email = await sendZohoMail(emails, subject || `[Lume] ${itemTitle}`, htmlBody);
         }
 
-        if ((channel === 'wati' || channel === 'both') && numbers.length) {
-            const watiResults = await Promise.all(numbers.map(n => sendWatiMessage(n, message)));
-            teamResult.whatsapp = watiResults.every(r => r === 'sent') ? 'sent'
-                                : watiResults.some(r => r === 'mock') ? 'mock' : 'failed';
-        }
-
         results[team] = teamResult;
     }
 
-    // Log to Supabase
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-    if (supabaseUrl && supabaseKey) {
-        const supabase = createClient(supabaseUrl, supabaseKey);
-        await supabase.from('notifications').insert({
-            id: `notif_${Date.now()}`,
-            notificationType: 'team_broadcast',
-            recipientName: teams.join(', '),
-            whatsappNumber: 'Team Blast',
-            message: `[${channel.toUpperCase()}] ${message}`,
-            taskId: null,
-            status: Object.values(results).some((r: any) => r.email === 'failed' || r.whatsapp === 'failed') ? 'Partial Failure' : 'Sent/Mocked',
-            timestamp: new Date().toISOString()
-        });
+    // Send WhatsApp to all members from DB (deduplicated across teams)
+    if ((channel === 'wati' || channel === 'both') && allNumbers.length) {
+        const watiResults = await Promise.all(allNumbers.map(n => sendWatiMessage(n, message)));
+        const overallWhatsapp = watiResults.every(r => r === 'sent') ? 'sent'
+                              : watiResults.some(r => r === 'mock') ? 'mock' : 'failed';
+        for (const team of (teams as string[])) {
+            results[team] = { ...(results[team] || {}), whatsapp: overallWhatsapp };
+        }
+    } else if ((channel === 'wati' || channel === 'both') && allNumbers.length === 0) {
+        console.warn('[notify-teams] No active WhatsApp numbers found in team_members for teams:', teams);
     }
+
+    // Log to Supabase
+    await supabase.from('notifications').insert({
+        id: `notif_${Date.now()}`,
+        notificationType: 'team_broadcast',
+        recipientName: (teams as string[]).join(', '),
+        whatsappNumber: 'Team Blast',
+        message: `[${channel.toUpperCase()}] ${message}`,
+        taskId: null,
+        status: Object.values(results).some((r: any) => r.email === 'failed' || r.whatsapp === 'failed') ? 'Partial Failure' : 'Sent/Mocked',
+        timestamp: new Date().toISOString()
+    });
 
     return NextResponse.json({ success: true, results });
 }
 
 export async function GET() {
-    // Returns config status so UI can show enabled/disabled states
     return NextResponse.json({
         zohoConfigured: !!(process.env.ZOHO_CLIENT_ID && process.env.ZOHO_REFRESH_TOKEN && process.env.ZOHO_ACCOUNT_ID),
         watiConfigured: !!process.env.WATI_API_KEY,

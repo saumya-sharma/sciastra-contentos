@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '@/lib/requireAuth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -16,7 +17,10 @@ const CHANNEL_NAMES = [
   'SciAstra Whatsapp/emails/notifications',
 ];
 
-export async function GET() {
+export async function GET(req: Request) {
+  const auth = await requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const [itemsResp, teamResp, campaignsResp] = await Promise.all([
       supabase.from('content_items').select('id, title, status, channel, date, type, assignees, auditLog, created_at'),

@@ -1,10 +1,34 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '@/lib/requireAuth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+async function requireAdmin(req: Request): Promise<{ email: string } | NextResponse> {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
+    const SUPER_ADMIN = process.env.SUPER_ADMIN_EMAIL || 'mysaumya38@gmail.com';
+    const OFFICE_ADMIN = process.env.OFFICE_ADMIN_EMAIL || 'hello@getlume.com';
+
+    if (auth.user.email === SUPER_ADMIN || auth.user.email === OFFICE_ADMIN) {
+        return { email: auth.user.email! };
+    }
+
+    const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('email', (auth.user.email || '').toLowerCase())
+        .single();
+
+    if (!data || data.role !== 'ADMIN') {
+        return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
+    }
+    return { email: auth.user.email! };
+}
 
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || 'mysaumya38@gmail.com';
 const OFFICE_ADMIN_EMAIL = process.env.OFFICE_ADMIN_EMAIL || 'hello@getlume.com';
@@ -64,6 +88,9 @@ export async function POST(req: Request) {
   }
 
   if (body._action === 'approve_invite') {
+    const adminCheck = await requireAdmin(req);
+    if (adminCheck instanceof NextResponse) return adminCheck;
+
     const { inviteId, email, name, role } = body;
     // Send invite email via Supabase Auth admin
     await supabase.auth.admin.inviteUserByEmail(email, {
@@ -85,6 +112,9 @@ export async function POST(req: Request) {
   }
 
   if (body._action === 'reject_invite') {
+    const adminCheck = await requireAdmin(req);
+    if (adminCheck instanceof NextResponse) return adminCheck;
+
     const { inviteId } = body;
     const { error } = await supabase.from('pending_invites').delete().eq('id', inviteId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -92,6 +122,9 @@ export async function POST(req: Request) {
   }
 
   if (body._action === 'direct_invite') {
+    const adminCheck = await requireAdmin(req);
+    if (adminCheck instanceof NextResponse) return adminCheck;
+
     const { email, name, role } = body;
     await supabase.auth.admin.inviteUserByEmail(email, { data: { name, role } });
     await supabase.from('user_roles').upsert({

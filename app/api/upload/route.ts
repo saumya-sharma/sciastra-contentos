@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
+import { requireAuth } from '@/lib/requireAuth';
+
+if (!process.env.CLOUDINARY_URL) {
+  console.warn('[upload] CLOUDINARY_URL is not set — uploads will fail');
+}
 
 cloudinary.config({
   secure: true
 });
 
 export async function POST(req: Request) {
+  const auth = await requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File;
@@ -20,7 +28,7 @@ export async function POST(req: Request) {
 
     const result = await new Promise((resolve, reject) => {
         cloudinary.uploader.upload_stream(
-            { resource_type: 'auto', folder: 'sciastra_contentos' },
+            { resource_type: 'auto', folder: 'lume_uploads' },
             (error, result) => {
                 if (error) {
                     console.error("Cloudinary upload failed", error);

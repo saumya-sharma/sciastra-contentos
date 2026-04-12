@@ -2,12 +2,16 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@supabase/supabase-js';
+import { requireCronSecret } from '@/lib/requireAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export async function GET() {
+export async function GET(req: Request) {
+    const cronCheck = requireCronSecret(req);
+    if (cronCheck) return cronCheck;
+
     const examsToAdd: any[] = [];
     console.log("Starting cron to fetch live exam dates...");
 
@@ -21,6 +25,7 @@ export async function GET() {
         const pageText = $('body').text().replace(/\s+/g, ' ');
         const nestMatch = pageText.match(/date of examination.*?(\d{1,2}\s+[a-zA-Z]+\s+\d{4})/i); 
         
+        if (!nestMatch) console.warn('[cron] Using fallback date for NEST — could not parse from page text');
         let nestDate = nestMatch ? new Date(nestMatch[1]) : new Date('2026-06-30T00:00:00Z');
         
         examsToAdd.push({
@@ -44,6 +49,7 @@ export async function GET() {
         const pageText2 = $2('body').text().replace(/\s+/g, ' ');
         const iatMatch = pageText2.match(/IAT.*?(\d{1,2}\s+[a-zA-Z]+\s+\d{4})/i); 
         
+        if (!iatMatch) console.warn('[cron] Using fallback date for IAT/IISER — could not parse from page text');
         let iatDate = iatMatch ? new Date(iatMatch[1]) : new Date('2026-06-09T00:00:00Z');
 
         examsToAdd.push({

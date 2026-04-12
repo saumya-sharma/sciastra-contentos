@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { requireAuth } from '@/lib/requireAuth';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export async function GET() {
+export async function GET(req: Request) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
     try {
         const [itemsResp, teamResp, campaignsResp, notifsResp] = await Promise.all([
             supabase.from('content_items').select('*'),
@@ -26,6 +29,9 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json();
     
     if (body._action === 'UPDATE_TEAM') {
@@ -66,6 +72,9 @@ export async function PUT(req: Request) {
 }
 
 export async function POST(req: Request) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await req.json();
     if (body._action === 'CREATE_ITEM') {
         const { error } = await supabase.from('content_items').insert(body.item);
@@ -76,6 +85,9 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
