@@ -144,8 +144,11 @@ export default function ContentOS() {
                             setUserName(d.name && d.name !== 'Admin' ? d.name : (metaName || email.split('@')[0]));
                         } else {
                             setAuthError(d.message || 'Access denied.');
+                            setLoading(false);
                         }
-                    });
+                    }).catch(() => setLoading(false));
+            } else {
+                setLoading(false);
             }
         });
 
