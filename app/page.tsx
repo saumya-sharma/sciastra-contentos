@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
 
 type AuditLog = { user: string; action: string; timestamp: string };
 type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; };
@@ -48,7 +50,13 @@ export default function ContentOS() {
     const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('pipeline');
-    const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'>('members');
+
+    // Lazy-init Supabase browser client (avoids build-time env var errors)
+    const supabaseBrowser = useMemo(() => createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
+    ), []);
+    const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'|'invites'>('members');
     const [channelConfig, setChannelConfig] = useState<Channel[]>(DEFAULT_CHANNELS);
     const [showAddChannelForm, setShowAddChannelForm] = useState(false);
     const [newChannelForm, setNewChannelForm] = useState({ name: '', platform: 'Instagram', color: '#E1306C', defaultAssignee: '' });
@@ -56,17 +64,25 @@ export default function ContentOS() {
     const [isDark, setIsDark] = useState(true);
     const [mounted, setMounted] = useState(false);
     
-    // Auth & Roles — initialized from localStorage synchronously on first render
-    // This prevents the flash where mounted=true but role=null
-    const [role, setRole] = useState<string | null>(() => {
-        if (typeof window === 'undefined') return null;
-        return localStorage.getItem('sa_role');
-    });
-    const [userName, setUserName] = useState<string>(() => {
-        if (typeof window === 'undefined') return 'Unknown';
-        return localStorage.getItem('sa_name') || 'Unknown';
-    });
+    // Auth & Roles — DO NOT read from localStorage (old role-selector system is deprecated)
+    // Supabase session check in useEffect sets these
+    const [role, setRole] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string>('Unknown');
     const [viewMode, setViewMode] = useState<'week'|'month'>('week');
+    const [weekOffset, setWeekOffset] = useState(0);   // 0 = current week, +1 = next week, etc.
+    const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, +1 = next, etc.
+    const [userEmail, setUserEmail] = useState(''); // logged-in email from Supabase session
+    const [authView, setAuthView] = useState<'login'|'request'>('login');
+    const [authEmail, setAuthEmail] = useState('');
+    const [authPassword, setAuthPassword] = useState('');
+    const [authError, setAuthError] = useState('');
+    const [authLoading, setAuthLoading] = useState(false);
+    const [requestForm, setRequestForm] = useState({ name: '', email: '', role: 'Social Media Manager', message: '' });
+    const [requestSent, setRequestSent] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+    const [showDirectInvite, setShowDirectInvite] = useState(false);
+    const [directInviteForm, setDirectInviteForm] = useState({ name: '', email: '', role: 'SMM' });
 
     // Drawer state
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
@@ -98,16 +114,9 @@ export default function ContentOS() {
     const [watiEnabled, setWatiEnabled] = useState(false);
 
     useEffect(() => {
-        // 1. SYNC: read role was already done by lazy useState initializer above
-        //    Just handle tutorial check here
-        const savedRole = localStorage.getItem('sa_role');
-        const savedName = localStorage.getItem('sa_name');
-        if (savedRole && savedName) {
-            if (!localStorage.getItem('sa_tutorial_seen')) {
-                setShowTutorial(true);
-                localStorage.setItem('sa_tutorial_seen', 'true');
-            }
-        }
+        // Clear stale legacy role-selector localStorage (old auth system)
+        localStorage.removeItem('sa_role');
+        localStorage.removeItem('sa_name');
 
         // Dark mode
         const savedTheme = localStorage.getItem('sa_theme');
@@ -118,14 +127,40 @@ export default function ContentOS() {
             document.documentElement.classList.add('dark');
             setIsDark(true);
         }
-
-        // Report date (client-only to avoid SSR mismatch)
         setReportDate(new Date().toLocaleDateString());
-
-        // 2. MOUNT: unblock login UI — happens in same microtask as role set above
         setMounted(true);
 
-        // 3. ASYNC: fetch DB data (non-blocking)
+        // Supabase session check
+        supabaseBrowser.auth.getSession().then(({ data }) => {
+            if (data.session) {
+                const email = data.session.user.email || '';
+                const metaName = data.session.user.user_metadata?.name || data.session.user.user_metadata?.full_name || '';
+                setUserEmail(email);
+                fetch(`/api/auth?email=${encodeURIComponent(email)}`)
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.role) {
+                            setRole(d.role);
+                            setUserName(d.name && d.name !== 'Admin' ? d.name : (metaName || email.split('@')[0]));
+                        } else {
+                            setAuthError(d.message || 'Access denied.');
+                        }
+                    });
+            }
+        });
+
+        supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+            if (!session) {
+                setRole(null);
+                setUserEmail('');
+                setUserName('Unknown');
+            }
+        });
+    }, []);
+
+    // Fetch app data whenever role is set
+    useEffect(() => {
+        if (!role) return;
         fetch('/api/db').then(res => res.json()).then(data => {
             setItems(data.items || []);
             setTeam(data.team || []);
@@ -134,21 +169,15 @@ export default function ContentOS() {
             if (data.config) setConfig(data.config);
             setLoading(false);
         });
-
-        // Fetch analytics metrics
         fetch('/api/analytics').then(res => res.json()).then(data => {
             if (!data.error) setAnalyticsData(data);
         }).catch(() => {});
-
-        // Background cron (fire-and-forget)
         fetch('/api/cron').catch(() => {});
-
-        // Check Zoho + WATI notification config
         fetch('/api/notify-teams').then(r => r.json()).then(cfg => {
             setZohoEnabled(!!cfg.zohoConfigured);
             setWatiEnabled(!!cfg.watiConfigured);
         }).catch(() => {});
-    }, []);
+    }, [role]);
 
     const toggleDarkMode = () => {
         const newDark = !isDark;
@@ -371,54 +400,146 @@ export default function ContentOS() {
     // Don't render login UI on server — avoids hydration mismatch from localStorage reads
     if (!mounted) return null;
 
-    if (!role) {
-        const smmMembers = team.filter(t => t.role === 'SMM' && t.active !== false);
-        const creatorMembers = team.filter(t => t.role === 'CREATOR' && t.active !== false);
-        const adminMembers = team.filter(t => t.role === 'ADMIN' && t.active !== false);
+    const handleSignIn = async () => {
+        if (!authEmail || !authPassword) { setAuthError('Please enter email and password.'); return; }
+        setAuthLoading(true);
+        setAuthError('');
+        const { data, error } = await supabaseBrowser.auth.signInWithPassword({
+            email: authEmail.toLowerCase(),
+            password: authPassword,
+        });
+        if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+        const email = data.user?.email || '';
+        const metaName = data.user?.user_metadata?.name || data.user?.user_metadata?.full_name || '';
+        setUserEmail(email);
+        const roleResp = await fetch(`/api/auth?email=${encodeURIComponent(email)}`).then(r => r.json());
+        if (roleResp.role) {
+            setRole(roleResp.role);
+            // Prefer: db name → user_metadata name → email prefix
+            setUserName(roleResp.name && roleResp.name !== 'Admin' ? roleResp.name : (metaName || email.split('@')[0]));
+        } else {
+            setAuthError(roleResp.message || 'Access denied.');
+            await supabaseBrowser.auth.signOut();
+        }
+        setAuthLoading(false);
+    };
+
+    const handleRequestAccess = async () => {
+        if (!requestForm.name || !requestForm.email) { setAuthError('Name and email required.'); return; }
+        setAuthLoading(true);
+        await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ _action: 'request_access', ...requestForm, requestedRole: requestForm.role }),
+        });
+        setRequestSent(true);
+        setAuthLoading(false);
+    };
+
+    const handleLogout = async () => {
+        await supabaseBrowser.auth.signOut();
+        localStorage.removeItem('sa_role');
+        localStorage.removeItem('sa_name');
+        setRole(null);
+        setUserEmail('');
+        setUserName('Unknown');
+    };
+
+    if (!role && team.length === 0 && loading) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)]">
-                <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl max-w-lg w-full text-center hover:shadow-[#639922]/10 transition-shadow">
-                    <h1 className="text-3xl font-black mb-2 tracking-tighter uppercase">SciAstra<span className="text-[#639922]">OS</span></h1>
+                <div className="w-8 h-8 border-2 border-[#639922] border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
 
-                    {loginStep === 'role' ? (
-                        <>
-                            <p className="text-slate-400 mb-8 text-sm">Who are you?</p>
-                            <div className="space-y-4">
-                                {adminMembers.slice(0,1).map(t => (
-                                    <button key={t.id} onClick={() => login('ADMIN', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                        <span className="block text-[#639922] font-bold">Admin ({t.name})</span><span>→</span>
-                                    </button>
-                                ))}
-                                {smmMembers.length > 0 && (
-                                    <button onClick={() => setLoginStep('smm-pick')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                        <span className="block text-blue-400 font-bold">SMM (Social Media Manager)</span><span>→</span>
-                                    </button>
-                                )}
-                                {creatorMembers.slice(0,1).map(t => (
-                                    <button key={t.id} onClick={() => login('CREATOR', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-slate-800 border border-slate-700 p-4 rounded-xl flex items-center justify-between transition group">
-                                        <span className="block text-purple-400 font-bold">Creator / Editor ({t.name})</span><span>→</span>
-                                    </button>
-                                ))}
+    if (!role) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)] px-4">
+                <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-md">
+                    {/* Logo */}
+                    <div className="text-center mb-8">
+                        <div className="w-16 h-16 rounded-full bg-white mx-auto mb-4 flex items-center justify-center p-2 shadow-lg border border-slate-700">
+                            <img src="https://www.sciastra.com/assets/images/sciastra-logo.webp" alt="SciAstra" className="w-full h-full object-contain" />
+                        </div>
+                        <h1 className="text-2xl font-black tracking-tighter">SciAstra <span className="text-[#639922]">ContentOS</span></h1>
+                        <p className="text-slate-500 text-xs mt-1">Internal Content Operations Platform</p>
+                    </div>
+
+                    {/* Tab toggle */}
+                    <div className="flex bg-slate-900 rounded-lg p-1 mb-6">
+                        <button onClick={() => { setAuthView('login'); setAuthError(''); setRequestSent(false); }} className={`flex-1 py-2 rounded text-xs font-bold transition ${authView === 'login' ? 'bg-[#639922] text-white' : 'text-slate-400 hover:text-white'}`}>Sign In</button>
+                        <button onClick={() => { setAuthView('request'); setAuthError(''); }} className={`flex-1 py-2 rounded text-xs font-bold transition ${authView === 'request' ? 'bg-[#639922] text-white' : 'text-slate-400 hover:text-white'}`}>Request Access</button>
+                    </div>
+
+                    {authView === 'login' ? (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Work Email</label>
+                                <input
+                                    type="email"
+                                    value={authEmail}
+                                    onChange={e => setAuthEmail(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleSignIn()}
+                                    placeholder="you@sciastra.com"
+                                    className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder-slate-600"
+                                />
                             </div>
-                        </>
+                            <div>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Password</label>
+                                <input
+                                    type="password"
+                                    value={authPassword}
+                                    onChange={e => setAuthPassword(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleSignIn()}
+                                    placeholder="••••••••"
+                                    className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder-slate-600"
+                                />
+                            </div>
+                            {authError && <p className="text-red-400 text-xs font-medium text-center">{authError}</p>}
+                            <button
+                                onClick={handleSignIn}
+                                disabled={authLoading}
+                                className="w-full bg-[#639922] hover:bg-[#4d7a18] disabled:opacity-50 text-white font-black py-3 rounded-xl transition text-sm"
+                            >
+                                {authLoading ? 'Signing in…' : 'Sign In'}
+                            </button>
+                            <p className="text-center text-[10px] text-slate-600">Forgot password? Contact <span className="text-slate-400">saumyaprakash@sciastra.com</span></p>
+                        </div>
                     ) : (
-                        <>
-                            <p className="text-slate-400 mb-2 text-sm">Select your SMM identity</p>
-                            <p className="text-slate-600 mb-6 text-xs">Your content queue will filter to your assigned channels.</p>
-                            <div className="space-y-3">
-                                {smmMembers.map(t => (
-                                    <button key={t.id} onClick={() => login('SMM', t.name, 'pipeline')} className="w-full bg-[#0F172A] hover:bg-[#0d2242] border border-blue-900/50 p-4 rounded-xl flex items-center gap-4 transition">
-                                        <div className="w-10 h-10 rounded-full bg-blue-900 flex items-center justify-center font-black text-blue-300 text-lg">{t.name.charAt(0)}</div>
-                                        <div className="text-left">
-                                            <div className="font-bold text-blue-300 text-sm">{t.name}</div>
-                                            <div className="text-slate-500 text-xs">{t.channels?.join(', ') || 'All channels'}</div>
-                                        </div>
-                                        <span className="ml-auto text-slate-500">→</span>
+                        <div className="space-y-4">
+                            {requestSent ? (
+                                <div className="text-center py-8">
+                                    <div className="text-4xl mb-4">✅</div>
+                                    <p className="font-bold text-white mb-2">Request sent!</p>
+                                    <p className="text-slate-400 text-sm">You will receive an email when approved.</p>
+                                    <button onClick={() => { setRequestSent(false); setAuthView('login'); }} className="mt-4 text-xs text-[#639922] hover:underline">← Back to Sign In</button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Full Name</label>
+                                        <input value={requestForm.name} onChange={e => setRequestForm(f => ({...f, name: e.target.value}))} placeholder="Your full name" className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Work Email</label>
+                                        <input type="email" value={requestForm.email} onChange={e => setRequestForm(f => ({...f, email: e.target.value}))} placeholder="you@sciastra.com" className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1.5 tracking-widest">Your Role</label>
+                                        <select value={requestForm.role} onChange={e => setRequestForm(f => ({...f, role: e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white">
+                                            <option>Social Media Manager</option>
+                                            <option>Video Editor</option>
+                                            <option>Designer</option>
+                                        </select>
+                                    </div>
+                                    {authError && <p className="text-red-400 text-xs font-medium text-center">{authError}</p>}
+                                    <button onClick={handleRequestAccess} disabled={authLoading} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black py-3 rounded-xl transition text-sm">
+                                        {authLoading ? 'Submitting…' : 'Submit Request'}
                                     </button>
-                                ))}
-                                <button onClick={() => setLoginStep('role')} className="text-xs text-slate-600 hover:text-slate-400 transition mt-2">← Back</button>
-                            </div>
-                        </>
+                                </>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
@@ -545,7 +666,7 @@ export default function ContentOS() {
                             </div>
                         </div>
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
-                            {role} | {userName.split(' ')[0]}
+                            {role === 'ADMIN' ? 'Admin' : role === 'SMM' ? 'SMM' : 'Creator'} | {userName.split(' ')[0] || 'You'}
                         </div>
                     </div>
                     <nav className="flex-1 px-4 space-y-2">
@@ -567,8 +688,9 @@ export default function ContentOS() {
                         )}
                     </nav>
                     <div className="p-4 border-t border-slate-800 flex justify-between items-center">
-                        <button onClick={logout} className="text-xs text-slate-500 hover:text-red-400 transition flex items-center justify-between">
-                            Switch Identity <span>→</span>
+                        <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition flex items-center gap-1">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Sign Out
                         </button>
                         <div className="flex items-center gap-1.5">
                             <button onClick={toggleDarkMode} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'} className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition flex items-center justify-center">
@@ -593,7 +715,7 @@ export default function ContentOS() {
                                 <div className="flex gap-2 ml-4">
                                     <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)} className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 outline-none">
                                         <option value="">All Channels</option>
-                                        {CHANNELS.filter(c=>c.name!=='Exams').map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                                        {channelConfig.filter(c => c.name !== 'Exams' && !c.archived).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
                                     </select>
                                     <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} className="bg-slate-900 border border-slate-700 text-xs rounded px-2 py-1 outline-none max-w-[150px]">
                                         <option value="">All Campaigns</option>
@@ -604,9 +726,29 @@ export default function ContentOS() {
                         </div>
 
                         {activeTab === 'calendar' && (
-                            <div className="flex bg-slate-900 rounded p-1 border border-slate-800">
-                                <button onClick={()=>setViewMode('week')} className={`px-3 py-1 rounded text-xs transition ${viewMode==='week'?'bg-[#639922] text-white':'text-slate-400 hover:text-white'}`}>Week Grid</button>
-                                <button onClick={()=>setViewMode('month')} className={`px-3 py-1 rounded text-xs transition ${viewMode==='month'?'bg-[#639922] text-white':'text-slate-400 hover:text-white'}`}>Month Zoom</button>
+                            <div className="flex items-center gap-2">
+                                {/* View mode toggle */}
+                                <div className="flex bg-slate-900 rounded p-1 border border-slate-800">
+                                    <button onClick={()=>setViewMode('week')} className={`px-3 py-1 rounded text-xs transition ${viewMode==='week'?'bg-[#639922] text-white':'text-slate-400 hover:text-white'}`}>Week Grid</button>
+                                    <button onClick={()=>setViewMode('month')} className={`px-3 py-1 rounded text-xs transition ${viewMode==='month'?'bg-[#639922] text-white':'text-slate-400 hover:text-white'}`}>Month Zoom</button>
+                                </div>
+                                {/* Navigation arrows */}
+                                <div className="flex items-center gap-1 ml-2">
+                                    <button
+                                        onClick={() => viewMode === 'week' ? setWeekOffset(o => o - 1) : setMonthOffset(o => o - 1)}
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                                        title="Previous"
+                                    >←</button>
+                                    <button
+                                        onClick={() => { setWeekOffset(0); setMonthOffset(0); }}
+                                        className="px-3 py-1 rounded bg-slate-800 hover:bg-[#639922] hover:text-white text-slate-300 text-xs font-bold transition"
+                                    >Today</button>
+                                    <button
+                                        onClick={() => viewMode === 'week' ? setWeekOffset(o => o + 1) : setMonthOffset(o => o + 1)}
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                                        title="Next"
+                                    >→</button>
+                                </div>
                             </div>
                         )}
                     </header>
@@ -674,7 +816,22 @@ export default function ContentOS() {
                                 )}
 
                                 {activeTab === 'calendar' && viewMode === 'week' && (() => {
-                                    const WEEK_DAYS = [{label:'Mon Apr 5',iso:'2026-04-05'},{label:'Tue Apr 6',iso:'2026-04-06'},{label:'Wed Apr 7',iso:'2026-04-07'},{label:'Thu Apr 8',iso:'2026-04-08'},{label:'Fri Apr 9',iso:'2026-04-09'},{label:'Sat Apr 10',iso:'2026-04-10'},{label:'Sun Apr 11',iso:'2026-04-11'}];
+                                    // Build dynamic week days based on weekOffset
+                                    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                                    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                    const today = new Date();
+                                    // Find Monday of current week
+                                    const dayOfWeek = today.getDay(); // 0=Sun
+                                    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                                    const monday = new Date(today);
+                                    monday.setDate(today.getDate() - daysToMonday + weekOffset * 7);
+                                    const WEEK_DAYS = Array.from({length: 7}, (_, i) => {
+                                        const d = new Date(monday);
+                                        d.setDate(monday.getDate() + i);
+                                        const iso = d.toISOString().split('T')[0];
+                                        const label = `${DAY_NAMES[d.getDay()]} ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+                                        return { label, iso };
+                                    });
                                     const examsByDate: Record<string, string[]> = {};
                                     items.filter(i => i.type === 'Exam').forEach(e => {
                                         if (!examsByDate[e.date]) examsByDate[e.date] = [];
@@ -704,7 +861,7 @@ export default function ContentOS() {
                                                 </div>
                                             )}
                                             {/* Channel content rows */}
-                                            {CHANNELS.filter(c=>c.name!=='Exams').map(ch => (
+                                            {channelConfig.filter(c=>c.name!=='Exams'&&!c.archived).map(ch => (
                                                 <div key={ch.name} className="grid grid-cols-[150px_repeat(7,_1fr)] border-b border-slate-800/50 hover:bg-slate-800/20 transition">
                                                     <div className={`p-4 border-r border-slate-800 text-xs font-bold ${getBorderClass(ch.name)} border-l-4 flex items-center`}>
                                                         {ch.name}
@@ -729,49 +886,60 @@ export default function ContentOS() {
                                     );
                                 })()}
 
-                                {activeTab === 'calendar' && viewMode === 'month' && (
+                                {activeTab === 'calendar' && viewMode === 'month' && (() => {
+                                    // Build 4-week grid dynamically based on monthOffset
+                                    const MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                                    const now = new Date();
+                                    // Start from the 1st of the month + offset
+                                    const baseMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+                                    // Find first Monday on or before the 1st
+                                    const firstDay = new Date(baseMonth);
+                                    const startDow = firstDay.getDay();
+                                    const backDays = startDow === 0 ? 6 : startDow - 1;
+                                    firstDay.setDate(firstDay.getDate() - backDays);
+                                    const MONTH_WEEKS = Array.from({length: 4}, (_, wi) => {
+                                        const dates = Array.from({length: 7}, (__, di) => {
+                                            const d = new Date(firstDay);
+                                            d.setDate(firstDay.getDate() + wi * 7 + di);
+                                            return d.toISOString().split('T')[0];
+                                        });
+                                        const start = dates[0], end = dates[6];
+                                        const sd = new Date(start), ed = new Date(end);
+                                        const label = `Week ${wi+1}: ${MNAMES[sd.getMonth()]} ${sd.getDate()}–${MNAMES[ed.getMonth()]} ${ed.getDate()}`;
+                                        return { label, dates };
+                                    });
+                                    return (
                                    <div className="overflow-x-auto h-full">
-                                        <div className="min-w-[900px] bg-[var(--color-surface)] border border-slate-800 rounded-xl">
+                                        <div className="min-w-[700px] bg-[var(--color-surface)] border border-slate-800 rounded-xl">
                                             {/* Month Zoom: 4-week grid — each column = one week summary */}
-                                            <div className="grid grid-cols-[150px_repeat(4,_1fr)] border-b border-slate-800 bg-slate-900/50">
+                                            <div className="grid border-b border-slate-800 bg-slate-900/50" style={{gridTemplateColumns: '120px repeat(4, 1fr)'}}>
                                                 <div className="p-3 font-bold text-slate-500 border-r border-slate-800 text-xs text-center uppercase tracking-wider">Channel</div>
-                                                {[
-                                                    {label:'Week 1: Apr 5–11', dates:['2026-04-05','2026-04-06','2026-04-07','2026-04-08','2026-04-09','2026-04-10','2026-04-11']},
-                                                    {label:'Week 2: Apr 12–18', dates:['2026-04-12','2026-04-13','2026-04-14','2026-04-15','2026-04-16','2026-04-17','2026-04-18']},
-                                                    {label:'Week 3: Apr 19–25', dates:['2026-04-19','2026-04-20','2026-04-21','2026-04-22','2026-04-23','2026-04-24','2026-04-25']},
-                                                    {label:'Week 4: Apr 26–May 2', dates:['2026-04-26','2026-04-27','2026-04-28','2026-04-29','2026-04-30','2026-05-01','2026-05-02']},
-                                                ].map(w => (
-                                                    <div key={w.label} onClick={() => setViewMode('week')} className="p-3 font-bold text-center border-r border-slate-800 text-xs text-slate-300 cursor-pointer hover:bg-slate-800 transition">{w.label}</div>
+                                                {MONTH_WEEKS.map(w => (
+                                                    <div key={w.label} onClick={() => { setViewMode('week'); }} className="p-3 font-bold text-center border-r border-slate-800 text-xs text-slate-300 cursor-pointer hover:bg-slate-800 transition leading-tight">{w.label}</div>
                                                 ))}
                                             </div>
-                                            {CHANNELS.filter(c=>c.name!=='Exams').map(ch => (
-                                                <div key={ch.name} className="grid grid-cols-[150px_repeat(4,_1fr)] border-b border-slate-800/50 hover:bg-slate-800/20 transition">
-                                                    <div className={`p-4 border-r border-slate-800 text-xs font-bold ${getBorderClass(ch.name)} border-l-4 flex items-center`}>
+                                            {channelConfig.filter(c=>c.name!=='Exams'&&!c.archived).map(ch => (
+                                                <div key={ch.name} className="grid border-b border-slate-800/50 hover:bg-slate-800/20 transition" style={{gridTemplateColumns: '120px repeat(4, 1fr)'}}>
+                                                    <div className={`p-3 border-r border-slate-800 text-[10px] font-bold ${getBorderClass(ch.name)} border-l-4 flex items-center leading-tight`}>
                                                         {ch.name}
                                                     </div>
-                                                    {[
-                                                        ['2026-04-05','2026-04-06','2026-04-07','2026-04-08','2026-04-09','2026-04-10','2026-04-11'],
-                                                        ['2026-04-12','2026-04-13','2026-04-14','2026-04-15','2026-04-16','2026-04-17','2026-04-18'],
-                                                        ['2026-04-19','2026-04-20','2026-04-21','2026-04-22','2026-04-23','2026-04-24','2026-04-25'],
-                                                        ['2026-04-26','2026-04-27','2026-04-28','2026-04-29','2026-04-30','2026-05-01','2026-05-02'],
-                                                    ].map((weekDates, widx) => {
-                                                        const weekItems = visibleItems.filter(i => i.channel === ch.name && weekDates.includes(i.date));
+                                                    {MONTH_WEEKS.map(({ dates }, widx) => {
+                                                        const weekItems = visibleItems.filter(i => i.channel === ch.name && dates.includes(i.date));
                                                         const published = weekItems.filter(i=>i.status==='Published').length;
                                                         return (
-                                                            <div key={widx} onClick={() => setViewMode('week')} className="border-r border-slate-800/50 p-3 min-h-[80px] cursor-pointer hover:bg-slate-700/30 transition flex flex-col gap-1">
+                                                            <div key={widx} onClick={() => setViewMode('week')} className="border-r border-slate-800/50 p-2 min-h-[60px] cursor-pointer hover:bg-slate-700/30 transition flex flex-col gap-1">
                                                                 {weekItems.length === 0 ? (
-                                                                    <span className="text-xs text-slate-700 italic">No content</span>
+                                                                    <span className="text-[10px] text-slate-700 italic">—</span>
                                                                 ) : (
                                                                     <>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-lg font-black text-white">{weekItems.length}</span>
-                                                                            <span className="text-[10px] text-slate-500">pieces</span>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span className="text-base font-black text-white">{weekItems.length}</span>
+                                                                            <span className="text-[9px] text-slate-500">pieces</span>
                                                                         </div>
-                                                                        <div className="text-[10px] text-[#639922] font-bold">{published} published</div>
-                                                                        <div className="h-1 w-full bg-slate-800 rounded overflow-hidden mt-1">
+                                                                        <div className="text-[9px] text-[#639922] font-bold">{published} pub</div>
+                                                                        <div className="h-1 w-full bg-slate-800 rounded overflow-hidden">
                                                                             <div className="h-full bg-[#639922]" style={{width: `${weekItems.length > 0 ? Math.round(published/weekItems.length*100) : 0}%`}}></div>
                                                                         </div>
-                                                                        <div className="text-[9px] text-slate-600 mt-1 truncate">{weekItems[0]?.title?.substring(0,30)}...</div>
                                                                     </>
                                                                 )}
                                                             </div>
@@ -781,17 +949,69 @@ export default function ContentOS() {
                                             ))}
                                         </div>
                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {activeTab === 'campaigns' && (
+                                    <div>
+                                        {/* Header with Create button */}
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-base font-bold text-white">All Campaigns <span className="text-slate-500 font-medium text-sm">({campaigns.length})</span></h3>
+                                            {role === 'ADMIN' && (
+                                                <button
+                                                    onClick={() => {
+                                                        setNewCampaignForm({ name: '', target: '', exam: '', color: '#639922' });
+                                                        setShowNewCampaignModal(true);
+                                                    }}
+                                                    className="bg-[#639922] hover:bg-[#4d7a18] text-white px-4 py-2 rounded-lg text-xs font-black transition shadow flex items-center gap-2"
+                                                >+ Create New Campaign</button>
+                                            )}
+                                        </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl">
                                         {campaigns.map(camp => {
                                             const campItems = items.filter(i => i.campaignId === camp.id);
                                             const published = campItems.filter(i => i.status === 'Published').length;
                                             const progress = campItems.length > 0 ? Math.round((published / campItems.length) * 100) : 0;
                                             return (
-                                                <div key={camp.id} className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-6 hover:border-purple-500/50 transition">
-                                                    <h3 className="text-lg font-bold text-white mb-1 leading-tight">{camp.name}</h3>
+                                                <div key={camp.id} className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-6 hover:border-purple-500/50 transition relative group">
+                                                    {/* ⋯ menu — ADMIN only */}
+                                                    {role === 'ADMIN' && (
+                                                        <div className="absolute top-3 right-3">
+                                                            <div className="relative" id={`camp-menu-${camp.id}`}>
+                                                                <button
+                                                                    onClick={e => {
+                                                                        e.stopPropagation();
+                                                                        const el = document.getElementById(`camp-dropdown-${camp.id}`);
+                                                                        if (el) el.classList.toggle('hidden');
+                                                                    }}
+                                                                    className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition opacity-0 group-hover:opacity-100 text-lg leading-none"
+                                                                >⋯</button>
+                                                                <div id={`camp-dropdown-${camp.id}`} className="hidden absolute right-0 top-9 z-30 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[130px]">
+                                                                    <button
+                                                                        onClick={async e => {
+                                                                            e.stopPropagation();
+                                                                            document.getElementById(`camp-dropdown-${camp.id}`)?.classList.add('hidden');
+                                                                            if (!window.confirm(`Delete campaign "${camp.name}"?\n\nContent items linked to it will become Standalone Posts.`)) return;
+                                                                            // Set linked items campaignId to null
+                                                                            for (const itm of campItems) {
+                                                                                await fetch('/api/db', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: itm.id, updates: { campaignId: null }, actor: userName }) });
+                                                                            }
+                                                                            // Delete the campaign
+                                                                            await fetch(`/api/db?id=${camp.id}&_action=DELETE_CAMPAIGN`, { method: 'DELETE' });
+                                                                            await refreshData();
+                                                                            setToast(`Campaign "${camp.name}" deleted`);
+                                                                        }}
+                                                                        className="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-red-900/20 transition font-bold flex items-center gap-2"
+                                                                    >
+                                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                                                        Delete Campaign
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <h3 className="text-lg font-bold text-white mb-1 leading-tight pr-8">{camp.name}</h3>
                                                     <p className="text-slate-400 text-xs mb-6 font-medium">{camp.target || 'TBD'}</p>
                                                     
                                                     <div className="mb-4">
@@ -806,12 +1026,13 @@ export default function ContentOS() {
 
                                                     <div className="flex gap-2 flex-wrap text-[10px] uppercase font-bold tracking-wider">
                                                         {Array.from(new Set(campItems.map(i=>i.channel))).slice(0,3).map(ch => (
-                                                            <span key={ch} className={`${getBgClass(String(ch))} px-2 py-1 rounded`}>{String(ch).split(' ')[0]}</span>
+                                                            <span key={ch} className={`${getBgClass(String(ch))} px-2 py-1 rounded`}>{String(ch)}</span>
                                                         ))}
                                                     </div>
                                                 </div>
                                             )
                                         })}
+                                    </div>
                                     </div>
                                 )}
 
@@ -835,6 +1056,17 @@ export default function ContentOS() {
                                                         {tab === 'members' ? '👥 Platform Identities' : '📺 Channels'}
                                                     </button>
                                                 ))}
+                                                {/* Pending Invites tab — load count lazily */}
+                                                <button
+                                                    onClick={() => {
+                                                        setTeamManagementTab('invites');
+                                                        fetch('/api/auth?action=pending_invites').then(r=>r.json()).then(d=>setPendingInvites(d.invites||[]));
+                                                    }}
+                                                    className={`px-6 py-4 text-sm font-bold tracking-wide transition border-b-2 -mb-px flex items-center gap-2 ${ teamManagementTab === 'invites' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-white' }`}
+                                                >
+                                                    📨 Pending Invites
+                                                    {pendingInvites.length > 0 && <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">{pendingInvites.length}</span>}
+                                                </button>
                                                 {teamManagementTab === 'members' && (
                                                     <div className="ml-auto flex items-center pr-4">
                                                         <button onClick={() => setShowOnboardModal(true)} className="bg-[#639922] text-white px-4 py-2 rounded text-xs font-bold hover:bg-[#4d7a18] transition shadow">+ Onboard Member</button>
@@ -986,9 +1218,95 @@ export default function ContentOS() {
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* Pending Invites Panel */}
+                                            {teamManagementTab === 'invites' && (
+                                                <div className="p-6 space-y-6">
+                                                    {/* Direct Invite button */}
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="text-xs text-slate-500">Requests submitted via the login page appear here for approval.</p>
+                                                        <button onClick={() => setShowDirectInvite(v => !v)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition">+ Direct Invite</button>
+                                                    </div>
+
+                                                    {/* Direct Invite form */}
+                                                    {showDirectInvite && (
+                                                        <div className="bg-slate-900/60 border border-indigo-500/20 rounded-xl p-5 space-y-4">
+                                                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Send Invite Email</p>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Name</label>
+                                                                    <input value={directInviteForm.name} onChange={e => setDirectInviteForm(f=>({...f,name:e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-indigo-500 outline-none rounded-lg p-2.5 text-sm text-white" placeholder="Full name" />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Email</label>
+                                                                    <input type="email" value={directInviteForm.email} onChange={e => setDirectInviteForm(f=>({...f,email:e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-indigo-500 outline-none rounded-lg p-2.5 text-sm text-white" placeholder="email@sciastra.com" />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Role</label>
+                                                                    <select value={directInviteForm.role} onChange={e => setDirectInviteForm(f=>({...f,role:e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-indigo-500 outline-none rounded-lg p-2.5 text-sm text-white cursor-pointer">
+                                                                        <option value="ADMIN">Admin</option>
+                                                                        <option value="SMM">SMM</option>
+                                                                        <option value="CREATOR">Creator</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex gap-3">
+                                                                <button onClick={() => setShowDirectInvite(false)} className="px-4 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition">Cancel</button>
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (!directInviteForm.email || !directInviteForm.name) return;
+                                                                        await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'direct_invite', ...directInviteForm }) });
+                                                                        setShowDirectInvite(false);
+                                                                        setDirectInviteForm({name:'',email:'',role:'SMM'});
+                                                                        setToast('Invite sent! ✅');
+                                                                    }}
+                                                                    className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition"
+                                                                >Send Invite</button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Pending list */}
+                                                    {pendingInvites.length === 0 ? (
+                                                        <p className="text-slate-600 text-sm text-center py-8 italic">No pending requests 🎉</p>
+                                                    ) : (
+                                                        <div className="space-y-3">
+                                                            {pendingInvites.map((inv: any) => (
+                                                                <div key={inv.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center justify-between gap-4">
+                                                                    <div>
+                                                                        <p className="font-bold text-white text-sm">{inv.name}</p>
+                                                                        <p className="text-slate-400 text-xs">{inv.email} · <span className="text-indigo-400">{inv.requested_role}</span></p>
+                                                                        <p className="text-slate-600 text-[10px] mt-1">{new Date(inv.created_at).toLocaleDateString()}</p>
+                                                                    </div>
+                                                                    <div className="flex gap-2 shrink-0">
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (!window.confirm(`Approve ${inv.name} as ${inv.requested_role}?`)) return;
+                                                                                await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'approve_invite', inviteId: inv.id, email: inv.email, name: inv.name, role: inv.requested_role }) });
+                                                                                setPendingInvites(p => p.filter(i => i.id !== inv.id));
+                                                                                setToast(`${inv.name} approved & invite email sent ✅`);
+                                                                            }}
+                                                                            className="px-3 py-1.5 rounded bg-[#639922] hover:bg-[#4d7a18] text-white text-xs font-black transition"
+                                                                        >Approve</button>
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                if (!window.confirm(`Reject request from ${inv.name}?`)) return;
+                                                                                await fetch('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _action: 'reject_invite', inviteId: inv.id }) });
+                                                                                setPendingInvites(p => p.filter(i => i.id !== inv.id));
+                                                                            }}
+                                                                            className="px-3 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-900/20 text-xs font-bold transition"
+                                                                        >Reject</button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
+
                                 {activeTab === 'analytics' && role === 'ADMIN' && (
                                     <div className="max-w-6xl space-y-6">
                                         <div className="bg-gradient-to-br from-slate-900 to-[#0B1121] border border-slate-800 rounded-xl p-6 shadow-2xl">
@@ -1061,7 +1379,7 @@ export default function ContentOS() {
                                                             <div key={ch.channel} className="flex items-center justify-between border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
                                                                 <div className="flex items-center gap-2">
                                                                     <div className={`w-2 h-2 rounded-full ${chConfig?.bg?.replace('/30','') ?? 'bg-slate-500'}`}></div>
-                                                                    <span className="text-xs font-medium text-slate-300">{ch.channel.split(' ')[0]}</span>
+                                                                    <span className="text-xs font-medium text-slate-300">{ch.channel.startsWith('SciAstra ') ? ch.channel.replace('SciAstra ', '') : ch.channel.split(' ')[0]}</span>
                                                                 </div>
                                                                 <div className="text-xs font-bold font-mono">
                                                                     <span className={ch.published >= ch.target ? 'text-[#639922]' : 'text-slate-400'}>{ch.published}</span><span className="text-slate-600"> / {ch.target}</span>
@@ -1289,7 +1607,7 @@ export default function ContentOS() {
                             <div>
                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-2 block">Assigned Channels</label>
                                 <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto custom-scrollbar p-2 bg-[var(--color-surface)] border border-slate-800 rounded-lg">
-                                    {CHANNELS.filter(c=>c.name!=='Exams').map(ch => (
+                                    {channelConfig.filter(c=>c.name!=='Exams'&&!c.archived).map(ch => (
                                         <label key={ch.name} className="flex items-center gap-2 cursor-pointer hover:bg-slate-800 p-1.5 rounded transition">
                                             <input type="checkbox" checked={newMember.channels.includes(ch.name)} onChange={(e) => {
                                                 const checked = e.target.checked;
@@ -1739,6 +2057,38 @@ export default function ContentOS() {
                                         </button>
                                         <p className="text-[9px] text-slate-500 text-center mt-2 font-medium">Sends payload to internal webhook simulating WATI integration.</p>
                                     </div>
+
+                                    {/* Fix 2: Delete Post — ADMIN only */}
+                                    {role === 'ADMIN' && selectedItem.id !== 'new' && (
+                                        <div className="mt-8 pt-6 border-t border-red-900/30">
+                                            {!deleteConfirm ? (
+                                                <button
+                                                    onClick={() => setDeleteConfirm(true)}
+                                                    className="w-full bg-red-950/30 border border-red-500/20 hover:bg-red-900/30 hover:border-red-500/40 text-red-400 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition text-sm"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                                    Delete Post
+                                                </button>
+                                            ) : (
+                                                <div className="bg-red-950/40 border border-red-500/30 rounded-xl p-4 space-y-3">
+                                                    <p className="text-red-300 text-sm font-bold text-center">Delete this post permanently?</p>
+                                                    <p className="text-red-400/70 text-xs text-center">This cannot be undone.</p>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => setDeleteConfirm(false)} className="flex-1 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition">Cancel</button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                await fetch(`/api/db?id=${selectedItem.id}`, { method: 'DELETE' });
+                                                                setSelectedItem(null);
+                                                                setDeleteConfirm(false);
+                                                                await refreshData();
+                                                            }}
+                                                            className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-black transition"
+                                                        >Confirm Delete</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                 </div>
                             )}

@@ -74,3 +74,12 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
+
+export async function DELETE(req: Request) {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+    const { error } = await supabase.from('content_items').delete().eq('id', id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+}
