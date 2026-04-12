@@ -448,14 +448,6 @@ export default function ContentOS() {
         setUserName('Unknown');
     };
 
-    if (!role && team.length === 0 && loading) {
-        return (
-            <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)]">
-                <div className="w-8 h-8 border-2 border-[#639922] border-t-transparent rounded-full animate-spin" />
-            </div>
-        );
-    }
-
     if (!role) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)] px-4">
