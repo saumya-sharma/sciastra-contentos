@@ -26,12 +26,26 @@ const DEFAULT_CHANNELS: Channel[] = [
 // Legacy CHANNELS constant kept for compat — derived from DEFAULT_CHANNELS
 const CHANNELS = DEFAULT_CHANNELS.map(c => ({ name: c.name, cls: c.cls, bg: c.bg }));
 
+type AnalyticsData = {
+    totalPublished: number;
+    bottleneckStage: string;
+    bottleneckCount: number;
+    avgVelocityDays: number;
+    topContributor: string;
+    topChannel: string;
+    approvalTurnaroundHours: number | null;
+    teamOutput: { name: string; published: number; target: number }[];
+    channelCadence: { channel: string; published: number; target: number }[];
+    examReadiness: { title: string; days: number; ready: number }[];
+};
+
 export default function ContentOS() {
     const [items, setItems] = useState<Item[]>([]);
     const [team, setTeam] = useState<TeamMember[]>([]);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [config, setConfig] = useState({ hasWatiKey: false });
+    const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('pipeline');
     const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'>('members');
@@ -120,6 +134,11 @@ export default function ContentOS() {
             if (data.config) setConfig(data.config);
             setLoading(false);
         });
+
+        // Fetch analytics metrics
+        fetch('/api/analytics').then(res => res.json()).then(data => {
+            if (!data.error) setAnalyticsData(data);
+        }).catch(() => {});
 
         // Background cron (fire-and-forget)
         fetch('/api/cron').catch(() => {});
@@ -984,7 +1003,7 @@ export default function ContentOS() {
                                                 <div className="bg-[#0B1121] border border-slate-800/50 p-5 rounded-lg flex flex-col justify-between">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Avg Pipeline Velocity</span>
                                                     <div className="flex items-end gap-2">
-                                                        <span className="text-3xl font-black text-[#639922]">4.2</span>
+                                                        <span className="text-3xl font-black text-[#639922]">{analyticsData?.avgVelocityDays ?? '—'}</span>
                                                         <span className="text-slate-400 text-sm font-medium mb-1">Days</span>
                                                     </div>
                                                     <p className="text-[10px] text-slate-600 mt-2">Ideation → Published</p>
@@ -993,14 +1012,14 @@ export default function ContentOS() {
                                                     <div className="absolute -right-4 -top-4 w-16 h-16 bg-red-900/20 blur-xl rounded-full"></div>
                                                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Primary Bottleneck</span>
                                                     <div>
-                                                        <span className="text-xl font-bold text-red-400">Sent to Editor</span>
-                                                        <p className="text-xs text-red-500/80 mt-1 font-medium">8 items stuck &gt; 3 days</p>
+                                                        <span className="text-xl font-bold text-red-400">{analyticsData?.bottleneckStage ?? '—'}</span>
+                                                        <p className="text-xs text-red-500/80 mt-1 font-medium">{analyticsData ? `${analyticsData.bottleneckCount} items stuck > 3 days` : 'Loading...'}</p>
                                                     </div>
                                                 </div>
                                                 <div className="bg-[#0B1121] border border-slate-800/50 p-5 rounded-lg flex flex-col justify-between">
                                                     <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Approval Turnaround</span>
                                                     <div className="flex items-end gap-2">
-                                                        <span className="text-3xl font-black text-blue-400">14</span>
+                                                        <span className="text-3xl font-black text-blue-400">{analyticsData?.approvalTurnaroundHours ?? '—'}</span>
                                                         <span className="text-slate-400 text-sm font-medium mb-1">Hours</span>
                                                     </div>
                                                     <p className="text-[10px] text-slate-600 mt-2">Ready to Publish → Approved</p>
@@ -1012,18 +1031,17 @@ export default function ContentOS() {
                                             <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-6">
                                                 <h3 className="font-bold text-white mb-6">Team Output (Published)</h3>
                                                 <div className="space-y-4">
-                                                    {team.filter(t=>t.role!=='ADMIN').map(member => {
-                                                        const count = items.filter(i => i.status === 'Published' && (i.assignees?.smm === member.name.split(' ')[0] || i.assignees?.editor === member.name.split(' ')[0] || i.assignees?.designer === member.name.split(' ')[0])).length;
-                                                        const target = member.role === 'SMM' ? 10 : 15;
-                                                        const pct = Math.min((count / target) * 100, 100);
+                                                    {(analyticsData?.teamOutput ?? team.filter(t=>t.role!=='ADMIN').map(m => ({ name: m.name, published: 0, target: m.role === 'SMM' ? 10 : 15 }))).map(member => {
+                                                        const pct = Math.min((member.published / member.target) * 100, 100);
+                                                        const roleDerived = team.find(t=>t.name===member.name)?.role ?? 'CREATOR';
                                                         return (
-                                                            <div key={member.id}>
+                                                            <div key={member.name}>
                                                                 <div className="flex justify-between text-xs font-medium mb-1">
-                                                                    <span className="text-slate-300">{member.name} <span className="text-[10px] text-slate-600">({member.role})</span></span>
-                                                                    <span className="text-slate-400">{count} / {target}</span>
+                                                                    <span className="text-slate-300">{member.name} <span className="text-[10px] text-slate-600">({roleDerived})</span></span>
+                                                                    <span className="text-slate-400">{member.published} / {member.target}</span>
                                                                 </div>
                                                                 <div className="h-1.5 w-full bg-[#0B1121] rounded overflow-hidden">
-                                                                    <div className={`h-full ${member.role === 'SMM' ? 'bg-blue-500' : 'bg-purple-500'} transition-all`} style={{width: `${pct}%`}}></div>
+                                                                    <div className={`h-full ${roleDerived === 'SMM' ? 'bg-blue-500' : 'bg-purple-500'} transition-all`} style={{width: `${pct}%`}}></div>
                                                                 </div>
                                                             </div>
                                                         );
@@ -1034,22 +1052,22 @@ export default function ContentOS() {
                                             <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-6">
                                                 <div className="flex justify-between items-center mb-6">
                                                     <h3 className="font-bold text-white">Channel Cadence vs Target</h3>
-                                                    <button className="text-[10px] text-[#639922] font-bold uppercase tracking-wider hover:underline">Edit Targets (3/wk)</button>
+                                                    <span className="text-[10px] text-slate-500">This week</span>
                                                 </div>
                                                 <div className="space-y-4">
-                                                    {CHANNELS.filter(c=>c.name!=='Exams' && c.name!=='Ad Campaigns').map(ch => {
-                                                        const published = items.filter(i => i.channel === ch.name && i.status === 'Published').length;
+                                                    {(analyticsData?.channelCadence ?? CHANNELS.filter(c=>c.name!=='Exams'&&c.name!=='Ad Campaigns').map(c=>({channel:c.name,published:0,target:3}))).map(ch => {
+                                                        const chConfig = CHANNELS.find(c=>c.name===ch.channel);
                                                         return (
-                                                            <div key={ch.name} className="flex items-center justify-between border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
+                                                            <div key={ch.channel} className="flex items-center justify-between border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
                                                                 <div className="flex items-center gap-2">
-                                                                    <div className={`w-2 h-2 rounded-full ${ch.bg.replace('/30','')}`}></div>
-                                                                    <span className="text-xs font-medium text-slate-300">{ch.name.split(' ')[0]}</span>
+                                                                    <div className={`w-2 h-2 rounded-full ${chConfig?.bg?.replace('/30','') ?? 'bg-slate-500'}`}></div>
+                                                                    <span className="text-xs font-medium text-slate-300">{ch.channel.split(' ')[0]}</span>
                                                                 </div>
                                                                 <div className="text-xs font-bold font-mono">
-                                                                    <span className={published >= 3 ? 'text-[#639922]' : 'text-slate-400'}>{published}</span><span className="text-slate-600"> / 3</span>
+                                                                    <span className={ch.published >= ch.target ? 'text-[#639922]' : 'text-slate-400'}>{ch.published}</span><span className="text-slate-600"> / {ch.target}</span>
                                                                 </div>
                                                             </div>
-                                                        )
+                                                        );
                                                     })}
                                                 </div>
                                             </div>
@@ -1129,19 +1147,19 @@ export default function ContentOS() {
                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">
                                               <div className="bg-[#0B1121] p-4 rounded-lg border border-slate-800/50">
                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Total Published</span>
-                                                   <span className="text-3xl font-black text-[#639922]">{items.filter(i=>i.status==='Published').length}</span>
+                                                   <span className="text-3xl font-black text-[#639922]">{analyticsData?.totalPublished ?? items.filter(i=>i.status==='Published').length}</span>
                                               </div>
                                               <div className="bg-[#0B1121] p-4 rounded-lg border border-slate-800/50">
                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Top Channel</span>
-                                                   <span className="text-xl font-bold text-blue-400 truncate block">SciAstra College</span>
+                                                   <span className="text-xl font-bold text-blue-400 truncate block">{analyticsData?.topChannel ?? '—'}</span>
                                               </div>
                                               <div className="bg-[#0B1121] p-4 rounded-lg border border-slate-800/50">
                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Top Contributor</span>
-                                                   <span className="text-xl font-bold text-purple-400">Priya</span>
+                                                   <span className="text-xl font-bold text-purple-400">{analyticsData?.topContributor ?? '—'}</span>
                                               </div>
                                               <div className="bg-[#0B1121] p-4 rounded-lg border border-slate-800/50">
                                                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1">Bottleneck</span>
-                                                   <span className="text-xl font-bold text-red-400">Sent to Editor</span>
+                                                   <span className="text-xl font-bold text-red-400">{analyticsData?.bottleneckStage ?? '—'}</span>
                                               </div>
                                          </div>
 
@@ -1164,15 +1182,12 @@ export default function ContentOS() {
                                               <div>
                                                    <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Exam Readiness Summary</h3>
                                                    <div className="grid grid-cols-2 gap-4">
-                                                        {upcomingExams.map((ex, idx) => {
-                                                            const pub = Math.floor(Math.random() * 5) + 1;
-                                                            return (
-                                                                <div key={idx} className="flex justify-between p-3 bg-[#0B1121] rounded">
-                                                                    <span className="font-bold text-slate-300">{ex.title} (in {ex.days}d)</span>
-                                                                    <span className="text-[#639922] font-mono font-bold">{pub} ready</span>
-                                                                </div>
-                                                            )
-                                                        })}
+                                                        {(analyticsData?.examReadiness ?? upcomingExams.map(ex => ({ title: ex.title, days: ex.days, ready: 0 }))).map((ex, idx) => (
+                                                            <div key={idx} className="flex justify-between p-3 bg-[#0B1121] rounded">
+                                                                <span className="font-bold text-slate-300">{ex.title} (in {ex.days}d)</span>
+                                                                <span className="text-[#639922] font-mono font-bold">{ex.ready} ready</span>
+                                                            </div>
+                                                        ))}
                                                    </div>
                                               </div>
                                          </div>
