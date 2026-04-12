@@ -141,7 +141,7 @@ export default function ContentOS() {
                     .then(d => {
                         if (d.role) {
                             setRole(d.role);
-                            setUserName(d.name && d.name !== 'Admin' ? d.name : (metaName || email.split('@')[0]));
+                            setUserName(d.name?.trim() ? d.name : (metaName || email.split('@')[0]));
                         } else {
                             setAuthError(d.message || 'Access denied.');
                             setLoading(false);
@@ -419,7 +419,7 @@ export default function ContentOS() {
         if (roleResp.role) {
             setRole(roleResp.role);
             // Prefer: db name → user_metadata name → email prefix
-            setUserName(roleResp.name && roleResp.name !== 'Admin' ? roleResp.name : (metaName || email.split('@')[0]));
+            setUserName(roleResp.name?.trim() ? roleResp.name : (metaName || email.split('@')[0]));
         } else {
             setAuthError(roleResp.message || 'Access denied.');
             await supabaseBrowser.auth.signOut();
@@ -1021,7 +1021,7 @@ export default function ContentOS() {
 
                                                     <div className="flex gap-2 flex-wrap text-[10px] uppercase font-bold tracking-wider">
                                                         {Array.from(new Set(campItems.map(i=>i.channel))).slice(0,3).map(ch => (
-                                                            <span key={ch} className={`${getBgClass(String(ch))} px-2 py-1 rounded`}>{String(ch)}</span>
+                                                            <span key={ch} className={`${getBgClass(String(ch))} px-2 py-1 rounded`}>{String(ch).startsWith('SciAstra ') ? String(ch).slice(9) : String(ch)}</span>
                                                         ))}
                                                     </div>
                                                 </div>
