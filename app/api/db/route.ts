@@ -10,21 +10,25 @@ export async function GET(req: Request) {
     const auth = await requireAuth(req);
     if (auth instanceof NextResponse) return auth;
     try {
-        const [itemsResp, teamResp, campaignsResp, notifsResp] = await Promise.all([
+        const [itemsResp, teamResp, campaignsResp, notifsResp, channelsResp, ideasResp] = await Promise.all([
             supabase.from('content_items').select('*'),
             supabase.from('team_members').select('*'),
             supabase.from('campaigns').select('*'),
-            supabase.from('notifications').select('*')
+            supabase.from('notifications').select('*'),
+            supabase.from('channels').select('*').order('order', { ascending: true }),
+            supabase.from('ideas').select('*').order('created_at', { ascending: false }),
         ]);
         return NextResponse.json({
             items: itemsResp.data || [],
             team: teamResp.data || [],
             campaigns: campaignsResp.data || [],
             notifications: notifsResp.data || [],
+            channels: channelsResp.data || [],
+            ideas: ideasResp.data || [],
             config: { hasWatiKey: !!process.env.WATI_API_KEY }
         });
     } catch(e) {
-        return NextResponse.json({ items: [], team: [], campaigns: [] });
+        return NextResponse.json({ items: [], team: [], campaigns: [], channels: [], ideas: [] });
     }
 }
 
@@ -41,6 +45,20 @@ export async function PUT(req: Request) {
     if (body._action === 'CREATE_CAMPAIGN') {
         const { error } = await supabase.from('campaigns').insert(body.campaign);
         return NextResponse.json({ success: !error, campaign: body.campaign });
+    }
+    if (body._action === 'SAVE_CHANNELS') {
+        // Replace all channels with the new set
+        await supabase.from('channels').delete().neq('id', '');
+        if (body.channels?.length) {
+            const { error } = await supabase.from('channels').insert(body.channels);
+            if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+        return NextResponse.json({ success: true });
+    }
+    if (body._action === 'UPDATE_IDEA') {
+        const { id, ...updates } = body.idea;
+        const { error } = await supabase.from('ideas').update(updates).eq('id', id);
+        return NextResponse.json({ success: !error });
     }
     
     // Normal edit for content_items
@@ -81,6 +99,11 @@ export async function POST(req: Request) {
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
         return NextResponse.json({ success: true, item: body.item });
     }
+    if (body._action === 'CREATE_IDEA') {
+        const { error, data } = await supabase.from('ideas').insert(body.idea).select().single();
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ success: true, idea: data });
+    }
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
@@ -90,8 +113,11 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
+    const table = searchParams.get('table') || 'content_items';
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
-    const { error } = await supabase.from('content_items').delete().eq('id', id);
+    const allowed = ['content_items', 'ideas', 'campaigns'];
+    if (!allowed.includes(table)) return NextResponse.json({ error: 'Invalid table' }, { status: 400 });
+    const { error } = await supabase.from(table).delete().eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });
 }

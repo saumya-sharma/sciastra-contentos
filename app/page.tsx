@@ -5,28 +5,24 @@ import { createClient } from '@supabase/supabase-js';
 
 
 type AuditLog = { user: string; action: string; timestamp: string };
-type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; };
+type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; perf_views?: number; perf_likes?: number; perf_comments?: number; perf_shares?: number; perf_notes?: string; perf_logged_at?: string; };
 type TeamMember = { id: string; name: string; role: string; whatsapp: string; active?: boolean; channels?: string[] };
 type Campaign = { id: string, name: string, target?: string, exam?: string, startDate?: string, endDate?: string };
+type Idea = { id: string; content: string; platform?: string; created_by?: string; converted?: boolean; converted_item_id?: string; created_at: string };
 
-const STATUSES = ['Ideation', 'Scripting', 'Sent to Editor', 'Ready to Publish', 'Published'];
+const STATUSES = ['Draft', 'Ideation', 'Scripting', 'Sent to Editor', 'Ready to Publish', 'Published'];
 
 type Channel = { id: string; name: string; platform: string; color: string; cls: string; bg: string; defaultAssignee?: string; archived?: boolean; order?: number };
 
-const DEFAULT_CHANNELS: Channel[] = [
-    { id: 'ch_vivek',    name: 'Vivek NISER | SciAstra', platform: 'YouTube',   color: '#7C3AED', cls: 'border-l-purple-500', bg: 'bg-purple-900/30',   defaultAssignee: 'Vivek', order: 0 },
-    { id: 'ch_ig',       name: 'Instagram',              platform: 'Instagram', color: '#E1306C', cls: 'border-l-[#E1306C]',  bg: 'bg-[#E1306C]/15',    defaultAssignee: 'Mahak', order: 1 },
-    { id: 'ch_english',  name: 'SciAstra English',       platform: 'YouTube',   color: '#1D4ED8', cls: 'border-l-blue-500',   bg: 'bg-blue-900/30',     defaultAssignee: 'Priya', order: 2 },
-    { id: 'ch_11th',     name: 'SciAstra 11th',          platform: 'YouTube',   color: '#EA580C', cls: 'border-l-orange-500', bg: 'bg-orange-900/30',   defaultAssignee: 'Ritika', order: 3 },
-    { id: 'ch_12th',     name: 'SciAstra 12th',          platform: 'YouTube',   color: '#639922', cls: 'border-l-[#639922]',  bg: 'bg-[#639922]/15',    defaultAssignee: 'Ritika', order: 4 },
-    { id: 'ch_college',  name: 'SciAstra College',       platform: 'YouTube',   color: '#0D9488', cls: 'border-l-teal-500',   bg: 'bg-teal-900/30',     defaultAssignee: 'Team', order: 5 },
-    { id: 'ch_wa',       name: 'SciAstra Whatsapp/emails/notifications', platform: 'WhatsApp', color: '#25D366', cls: 'border-l-[#25D366]', bg: 'bg-[#25D366]/20', defaultAssignee: 'Mahak', order: 6 },
-    { id: 'ch_ads',      name: 'Ad Campaigns',           platform: 'Other',     color: '#DC2626', cls: 'border-l-red-500',    bg: 'bg-red-900/30',      order: 7 },
-    { id: 'ch_exams',    name: 'Exams',                  platform: 'Other',     color: '#991B1B', cls: 'border-l-red-600',    bg: 'bg-red-950/40',      order: 8 },
+// Fallback seed channels — only used when the workspace has no channels in DB yet
+const FALLBACK_CHANNELS: Channel[] = [
+    { id: 'ch_yt1',   name: 'Main YouTube',    platform: 'YouTube',   color: '#7C3AED', cls: 'border-l-purple-500', bg: 'bg-purple-900/30',  order: 0 },
+    { id: 'ch_ig',    name: 'Instagram',        platform: 'Instagram', color: '#E1306C', cls: 'border-l-[#E1306C]',  bg: 'bg-[#E1306C]/15',   order: 1 },
+    { id: 'ch_yt2',   name: 'Secondary YouTube',platform: 'YouTube',   color: '#1D4ED8', cls: 'border-l-blue-500',   bg: 'bg-blue-900/30',    order: 2 },
+    { id: 'ch_wa',    name: 'WhatsApp / Email', platform: 'WhatsApp',  color: '#25D366', cls: 'border-l-[#25D366]',  bg: 'bg-[#25D366]/20',   order: 3 },
+    { id: 'ch_ads',   name: 'Ad Campaigns',     platform: 'Other',     color: '#DC2626', cls: 'border-l-red-500',    bg: 'bg-red-900/30',     order: 4 },
+    { id: 'ch_exams', name: 'Exams',            platform: 'Other',     color: '#991B1B', cls: 'border-l-red-600',    bg: 'bg-red-950/40',     order: 5 },
 ];
-
-// Legacy CHANNELS constant kept for compat — derived from DEFAULT_CHANNELS
-const CHANNELS = DEFAULT_CHANNELS.map(c => ({ name: c.name, cls: c.cls, bg: c.bg }));
 
 type AnalyticsData = {
     totalPublished: number;
@@ -50,6 +46,16 @@ export default function ContentOS() {
     const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('pipeline');
+    const [ideas, setIdeas] = useState<Idea[]>([]);
+    const [newIdeaText, setNewIdeaText] = useState('');
+    const [newIdeaPlatform, setNewIdeaPlatform] = useState('');
+    const [ideaSaving, setIdeaSaving] = useState(false);
+    const [showQuickPost, setShowQuickPost] = useState(false);
+    const [quickPostForm, setQuickPostForm] = useState({ platform: '', title: '', date: '' });
+    const [showPerfModal, setShowPerfModal] = useState(false);
+    const [perfForm, setPerfForm] = useState({ views: '', likes: '', comments: '', shares: '', notes: '' });
+    const [notifBellOpen, setNotifBellOpen] = useState(false);
+    const [notifReadSet, setNotifReadSet] = useState<Set<string>>(new Set());
 
     // Lazy-init Supabase browser client (avoids build-time env var errors)
     const supabaseBrowser = useMemo(() => createClient(
@@ -70,7 +76,8 @@ export default function ContentOS() {
     }, [supabaseBrowser]);
 
     const [teamManagementTab, setTeamManagementTab] = useState<'members'|'channels'|'invites'>('members');
-    const [channelConfig, setChannelConfig] = useState<Channel[]>(DEFAULT_CHANNELS);
+    const [channelConfig, setChannelConfig] = useState<Channel[]>(FALLBACK_CHANNELS);
+    const [channelConfigDirty, setChannelConfigDirty] = useState(false);
     const [showAddChannelForm, setShowAddChannelForm] = useState(false);
     const [newChannelForm, setNewChannelForm] = useState({ name: '', platform: 'Instagram', color: '#E1306C', defaultAssignee: '' });
     const [reportDate, setReportDate] = useState('');
@@ -216,6 +223,8 @@ export default function ContentOS() {
             setTeam(data.team || []);
             setCampaigns(data.campaigns || []);
             setNotifications(data.notifications || []);
+            setIdeas(data.ideas || []);
+            if (data.channels?.length) setChannelConfig(data.channels);
             if (data.config) setConfig(data.config);
             setLoading(false);
         }).catch(() => setLoading(false));
@@ -228,6 +237,36 @@ export default function ContentOS() {
             setWatiEnabled(!!cfg.watiConfigured);
         }).catch(() => {});
     }, [role, authFetch]);
+
+    // Save channels to DB whenever they change (debounced via dirty flag)
+    useEffect(() => {
+        if (!channelConfigDirty || !role) return;
+        const timer = setTimeout(() => {
+            authFetch('/api/db', {
+                method: 'PUT',
+                body: JSON.stringify({ _action: 'SAVE_CHANNELS', channels: channelConfig }),
+            }).catch(() => {});
+            setChannelConfigDirty(false);
+        }, 800);
+        return () => clearTimeout(timer);
+    }, [channelConfig, channelConfigDirty, role, authFetch]);
+
+    // Compute publishing streak from items
+    const publishStreak = useMemo(() => {
+        const publishedDates = new Set(
+            items.filter(i => i.status === 'Published' && i.date).map(i => i.date.slice(0, 10))
+        );
+        let streak = 0;
+        const today = new Date();
+        for (let d = 0; d < 365; d++) {
+            const dt = new Date(today);
+            dt.setDate(dt.getDate() - d);
+            const iso = dt.toISOString().slice(0, 10);
+            if (publishedDates.has(iso)) streak++;
+            else if (d > 0) break;
+        }
+        return streak;
+    }, [items]);
 
     const toggleDarkMode = () => {
         const newDark = !isDark;
@@ -423,8 +462,8 @@ export default function ContentOS() {
     };
 
 
-    const getBorderClass = (chName: string) => CHANNELS.find(x => x.name === chName)?.cls || 'border-l-slate-500';
-    const getBgClass = (chName: string) => CHANNELS.find(x => x.name === chName)?.bg || 'bg-slate-900/30';
+    const getBorderClass = (chName: string) => channelConfig.find(x => x.name === chName)?.cls || 'border-l-slate-500';
+    const getBgClass = (chName: string) => channelConfig.find(x => x.name === chName)?.bg || 'bg-slate-900/30';
 
     const openShareModal = async (type: 'calendar' | 'pipeline') => {
         setShowShareModal(type);
@@ -765,6 +804,12 @@ export default function ContentOS() {
                         <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500 bg-slate-900 inline-block px-2 py-1 rounded">
                             {role === 'ADMIN' ? 'Admin' : role === 'SMM' ? 'SMM' : 'Creator'} | {userName.split(' ')[0] || 'You'}
                         </div>
+                        {publishStreak > 0 && (
+                            <div title={`You've published content ${publishStreak} day${publishStreak !== 1 ? 's' : ''} in a row!`} className="mt-2 flex items-center gap-1.5 cursor-default">
+                                <span className="text-sm">🔥</span>
+                                <span className="text-[10px] font-bold text-amber-500">{publishStreak}-day streak</span>
+                            </div>
+                        )}
                     </div>
                     <nav className="flex-1 px-4 space-y-2">
                         {role === 'CREATOR' ? (
@@ -774,6 +819,7 @@ export default function ContentOS() {
                                 <button onClick={() => { setActiveTab('pipeline'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'pipeline' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Kanban Board</button>
                                 <button onClick={() => { setActiveTab('calendar'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'calendar' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Calendar Matrix</button>
                                 <button onClick={() => { setActiveTab('campaigns'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'campaigns' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Campaign Hub</button>
+                                <button onClick={() => { setActiveTab('ideas'); setShowMobileSidebar(false); }} className={`w-full text-left px-4 py-2 font-medium rounded-lg transition ${activeTab === 'ideas' ? 'bg-[var(--color-surface)] text-[#639922]' : 'text-slate-400 hover:text-white'}`}>Ideas Capture</button>
                             </>
                         )}
                         {role === 'ADMIN' && (
@@ -832,6 +878,45 @@ export default function ContentOS() {
                                         <option value="">All Campaigns</option>
                                         {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Notifications bell */}
+                        <div className="relative">
+                            <button onClick={() => setNotifBellOpen(o => !o)} className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition relative">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                {(() => {
+                                    const unread = items.filter(i => {
+                                        const lastLog = i.auditLog?.[i.auditLog.length - 1];
+                                        return lastLog && !notifReadSet.has(i.id + lastLog.timestamp);
+                                    }).slice(0, 9).length;
+                                    return unread > 0 ? <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">{unread}</span> : null;
+                                })()}
+                            </button>
+                            {notifBellOpen && (
+                                <div className="absolute right-0 top-10 w-80 bg-[#0B1121] border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                                    <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">Recent Activity</span>
+                                        <button onClick={() => { const newSet = new Set(notifReadSet); items.forEach(i => { const l = i.auditLog?.[i.auditLog.length-1]; if(l) newSet.add(i.id+l.timestamp); }); setNotifReadSet(newSet); }} className="text-[10px] text-slate-500 hover:text-white transition font-bold">Mark all read</button>
+                                    </div>
+                                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-800">
+                                        {items.filter(i => i.auditLog?.length).sort((a,b) => {
+                                            const at = a.auditLog![a.auditLog!.length-1].timestamp;
+                                            const bt = b.auditLog![b.auditLog!.length-1].timestamp;
+                                            return bt.localeCompare(at);
+                                        }).slice(0, 20).map(i => {
+                                            const log = i.auditLog![i.auditLog!.length-1];
+                                            const isUnread = !notifReadSet.has(i.id + log.timestamp);
+                                            return (
+                                                <div key={i.id + log.timestamp} onClick={() => { setSelectedItem(i); setNotifBellOpen(false); const ns = new Set(notifReadSet); ns.add(i.id+log.timestamp); setNotifReadSet(ns); }} className={`px-4 py-3 hover:bg-slate-800/50 cursor-pointer transition ${isUnread ? 'bg-slate-900/40' : ''}`}>
+                                                    <p className="text-xs text-slate-200 leading-snug"><span className="font-bold text-white">{log.user}</span> {log.action.toLowerCase()} <span className="text-[#639922]">"{i.title || 'Untitled'}"</span></p>
+                                                    <p className="text-[10px] text-slate-500 mt-0.5">{new Date(log.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</p>
+                                                </div>
+                                            );
+                                        })}
+                                        {items.filter(i => i.auditLog?.length).length === 0 && <p className="text-xs text-slate-600 p-4 text-center">No activity yet.</p>}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1079,6 +1164,105 @@ export default function ContentOS() {
                                     );
                                 })()}
 
+                                {activeTab === 'ideas' && (
+                                    <div className="max-w-2xl mx-auto">
+                                        <div className="mb-6">
+                                            <h3 className="text-base font-bold text-white mb-1">Ideas Capture</h3>
+                                            <p className="text-xs text-slate-500">Capture content ideas before they're ready to be a full task. Hit Enter or click Save.</p>
+                                        </div>
+                                        {/* Input */}
+                                        <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4 mb-6 space-y-3">
+                                            <textarea
+                                                value={newIdeaText}
+                                                onChange={e => setNewIdeaText(e.target.value)}
+                                                onKeyDown={async e => {
+                                                    if (e.key === 'Enter' && !e.shiftKey && newIdeaText.trim()) {
+                                                        e.preventDefault();
+                                                        setIdeaSaving(true);
+                                                        const idea = { id: `idea_${Date.now()}`, content: newIdeaText.trim(), platform: newIdeaPlatform, created_by: userName, converted: false, created_at: new Date().toISOString() };
+                                                        setIdeas(prev => [idea, ...prev]);
+                                                        setNewIdeaText('');
+                                                        await authFetch('/api/db', { method: 'POST', body: JSON.stringify({ _action: 'CREATE_IDEA', idea }) }).catch(() => {});
+                                                        setIdeaSaving(false);
+                                                    }
+                                                }}
+                                                rows={2}
+                                                placeholder="Capture an idea… (Enter to save, Shift+Enter for new line)"
+                                                className="w-full bg-transparent text-white text-sm resize-none outline-none placeholder-slate-600"
+                                            />
+                                            <div className="flex items-center justify-between">
+                                                <select value={newIdeaPlatform} onChange={e => setNewIdeaPlatform(e.target.value)} className="bg-slate-900 border border-slate-700 text-xs text-slate-400 rounded px-2 py-1.5 outline-none">
+                                                    <option value="">Platform (optional)</option>
+                                                    {['YouTube','Instagram','LinkedIn','TikTok','X','WhatsApp','Other'].map(p => <option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                                <button
+                                                    disabled={!newIdeaText.trim() || ideaSaving}
+                                                    onClick={async () => {
+                                                        if (!newIdeaText.trim()) return;
+                                                        setIdeaSaving(true);
+                                                        const idea = { id: `idea_${Date.now()}`, content: newIdeaText.trim(), platform: newIdeaPlatform, created_by: userName, converted: false, created_at: new Date().toISOString() };
+                                                        setIdeas(prev => [idea, ...prev]);
+                                                        setNewIdeaText('');
+                                                        await authFetch('/api/db', { method: 'POST', body: JSON.stringify({ _action: 'CREATE_IDEA', idea }) }).catch(() => {});
+                                                        setIdeaSaving(false);
+                                                    }}
+                                                    className="px-4 py-1.5 rounded-lg bg-[#639922] hover:bg-[#4d7a18] text-white text-xs font-black transition disabled:opacity-50"
+                                                >{ideaSaving ? 'Saving…' : 'Save Idea'}</button>
+                                            </div>
+                                        </div>
+                                        {/* Ideas list */}
+                                        <div className="space-y-3">
+                                            {ideas.filter(i => !i.converted).length === 0 && (
+                                                <p className="text-center text-slate-600 text-sm py-12">No ideas yet — capture your first one above.</p>
+                                            )}
+                                            {ideas.filter(i => !i.converted).map(idea => (
+                                                <div key={idea.id} className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-4 flex items-start gap-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-slate-200 leading-relaxed">{idea.content}</p>
+                                                        <div className="flex items-center gap-3 mt-2">
+                                                            {idea.platform && <span className="text-[10px] font-bold text-slate-500 bg-slate-800 px-2 py-0.5 rounded">{idea.platform}</span>}
+                                                            <span className="text-[10px] text-slate-600">{idea.created_by} · {new Date(idea.created_at).toLocaleDateString()}</span>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={async () => {
+                                                            const newItem: Item = {
+                                                                id: `item_${Date.now()}`,
+                                                                title: idea.content.slice(0, 120),
+                                                                type: 'Content',
+                                                                channel: channelConfig.find(c => c.platform === idea.platform && c.name !== 'Exams')?.name || channelConfig.find(c=>c.name!=='Exams'&&!c.archived)?.name || '',
+                                                                date: new Date().toISOString().slice(0, 10),
+                                                                status: 'Ideation',
+                                                                assignees: { smm: userName },
+                                                                auditLog: [{ user: userName, action: 'Created from idea', timestamp: new Date().toISOString() }],
+                                                            };
+                                                            setItems(prev => [newItem, ...prev]);
+                                                            setIdeas(prev => prev.map(i => i.id === idea.id ? {...i, converted: true, converted_item_id: newItem.id} : i));
+                                                            setSelectedItem(newItem);
+                                                            setActiveTab('pipeline');
+                                                            await authFetch('/api/db', { method: 'POST', body: JSON.stringify({ _action: 'CREATE_ITEM', item: newItem }) }).catch(()=>{});
+                                                            await authFetch('/api/db', { method: 'PUT', body: JSON.stringify({ _action: 'UPDATE_IDEA', idea: { id: idea.id, converted: true, converted_item_id: newItem.id } }) }).catch(()=>{});
+                                                        }}
+                                                        className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-[#639922]/20 border border-slate-700 hover:border-[#639922]/50 text-slate-400 hover:text-[#639922] text-[11px] font-bold transition"
+                                                    >Turn into post →</button>
+                                                </div>
+                                            ))}
+                                            {ideas.filter(i => i.converted).length > 0 && (
+                                                <details className="mt-4">
+                                                    <summary className="text-xs text-slate-600 cursor-pointer hover:text-slate-400 transition font-bold">Show {ideas.filter(i=>i.converted).length} converted ideas</summary>
+                                                    <div className="mt-2 space-y-2">
+                                                        {ideas.filter(i => i.converted).map(idea => (
+                                                            <div key={idea.id} className="bg-slate-900/30 border border-slate-800/50 rounded-lg p-3 opacity-50">
+                                                                <p className="text-xs text-slate-400 line-through">{idea.content}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </details>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeTab === 'campaigns' && (
                                     <div>
                                         {/* Header with Create button */}
@@ -1293,6 +1477,7 @@ export default function ContentOS() {
                                                                             order: channelConfig.length,
                                                                         };
                                                                         setChannelConfig(prev => [...prev, newCh]);
+                                                                        setChannelConfigDirty(true);
                                                                         setNewChannelForm({ name: '', platform: 'Instagram', color: '#E1306C', defaultAssignee: '' });
                                                                         setShowAddChannelForm(false);
                                                                     }}
@@ -1320,6 +1505,7 @@ export default function ContentOS() {
                                                                         arr.splice(idx, 0, moved);
                                                                         return arr.map((c,i) => ({...c, order: i}));
                                                                     });
+                                                                    setChannelConfigDirty(true);
                                                                 }}>⠿</span>
                                                             {/* Color dot */}
                                                             <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: ch.color }} />
@@ -1330,11 +1516,11 @@ export default function ContentOS() {
                                                             </div>
                                                             {/* Color input */}
                                                             <input type="color" value={ch.color} title="Change color"
-                                                                onChange={e => setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, color: e.target.value} : c))}
+                                                                onChange={e => { setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, color: e.target.value} : c)); setChannelConfigDirty(true); }}
                                                                 className="w-7 h-7 rounded border border-slate-700 bg-transparent cursor-pointer" />
                                                             {/* Archive / Restore */}
                                                             <button
-                                                                onClick={() => setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, archived: !c.archived} : c))}
+                                                                onClick={() => { setChannelConfig(prev => prev.map(c => c.id === ch.id ? {...c, archived: !c.archived} : c)); setChannelConfigDirty(true); }}
                                                                 className={`px-3 py-1.5 rounded text-[10px] font-bold border transition ${ch.archived ? 'border-green-500/40 text-green-400 hover:bg-green-500/10' : 'border-slate-600 text-slate-400 hover:border-red-500/40 hover:text-red-400'}`}>
                                                                 {ch.archived ? 'Restore' : 'Archive'}
                                                             </button>
@@ -1500,8 +1686,8 @@ export default function ContentOS() {
                                                     <span className="text-[10px] text-slate-500">This week</span>
                                                 </div>
                                                 <div className="space-y-4">
-                                                    {(analyticsData?.channelCadence ?? CHANNELS.filter(c=>c.name!=='Exams'&&c.name!=='Ad Campaigns').map(c=>({channel:c.name,published:0,target:3}))).map(ch => {
-                                                        const chConfig = CHANNELS.find(c=>c.name===ch.channel);
+                                                    {(analyticsData?.channelCadence ?? channelConfig.filter(c=>c.name!=='Exams'&&c.name!=='Ad Campaigns').map(c=>({channel:c.name,published:0,target:3}))).map(ch => {
+                                                        const chConfig = channelConfig.find(c=>c.name===ch.channel);
                                                         return (
                                                             <div key={ch.channel} className="flex items-center justify-between border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
                                                                 <div className="flex items-center gap-2">
@@ -1644,6 +1830,67 @@ export default function ContentOS() {
                 </main>
             </div>
 
+            {/* Quick Post floating button */}
+            {role && role !== 'CREATOR' && (
+                <button
+                    onClick={() => setShowQuickPost(true)}
+                    className="fixed bottom-6 right-6 w-12 h-12 rounded-full bg-[#639922] hover:bg-[#4d7a18] text-white shadow-lg flex items-center justify-center z-40 transition text-2xl font-light"
+                    title="Quick Post"
+                >+</button>
+            )}
+
+            {/* Quick Post Modal */}
+            {showQuickPost && (
+                <>
+                    <div className="fixed inset-0 bg-black/70 z-50" onClick={() => setShowQuickPost(false)} />
+                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-[#0B1121] border border-slate-700 rounded-2xl shadow-2xl z-50 p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-black text-white text-lg">Quick Post</h3>
+                            <button onClick={() => setShowQuickPost(false)} className="text-slate-500 hover:text-white text-2xl leading-none">&times;</button>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Platform</label>
+                            <div className="flex flex-wrap gap-2">
+                                {['YouTube','Instagram','LinkedIn','TikTok','X','WhatsApp'].map(p => (
+                                    <button key={p} onClick={() => setQuickPostForm(f => ({...f, platform: p}))} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${quickPostForm.platform === p ? 'bg-[#639922] border-[#639922] text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{p}</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">What's this about?</label>
+                            <input value={quickPostForm.title} onChange={e => setQuickPostForm(f=>({...f,title:e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-[#639922]" placeholder="Brief description of the post…" />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Date</label>
+                            <input type="date" value={quickPostForm.date} onChange={e => setQuickPostForm(f=>({...f,date:e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-[#639922]" />
+                        </div>
+                        <button
+                            disabled={!quickPostForm.title.trim()}
+                            onClick={async () => {
+                                const matchedCh = channelConfig.find(c => c.platform === quickPostForm.platform && c.name !== 'Exams' && !c.archived);
+                                const newItem: Item = {
+                                    id: `item_${Date.now()}`,
+                                    title: quickPostForm.title.trim(),
+                                    type: 'Content',
+                                    channel: matchedCh?.name || channelConfig.find(c=>c.name!=='Exams'&&!c.archived)?.name || '',
+                                    date: quickPostForm.date || new Date().toISOString().slice(0, 10),
+                                    status: 'Ideation',
+                                    assignees: { smm: userName },
+                                    auditLog: [{ user: userName, action: 'Created via Quick Post', timestamp: new Date().toISOString() }],
+                                };
+                                setItems(prev => [newItem, ...prev]);
+                                setSelectedItem(newItem);
+                                setShowQuickPost(false);
+                                setQuickPostForm({ platform: '', title: '', date: '' });
+                                setActiveTab('pipeline');
+                                await authFetch('/api/db', { method: 'POST', body: JSON.stringify({ _action: 'CREATE_ITEM', item: newItem }) }).catch(()=>{});
+                            }}
+                            className="w-full py-3 rounded-xl bg-[#639922] hover:bg-[#4d7a18] text-white font-black text-sm transition disabled:opacity-50"
+                        >Add to Pipeline →</button>
+                    </div>
+                </>
+            )}
+
             {/* Tutorial Modal */}
             {showTutorial && (
                 <>
@@ -1775,7 +2022,19 @@ export default function ContentOS() {
                             <div className="pr-8 z-10 w-full">
                                 <div className="flex justify-between items-center mb-2">
                                      <span className={`text-[10px] font-bold text-white uppercase px-2 py-1 rounded tracking-wider ${getBgClass(selectedItem.channel)}`}>{selectedItem.channel}</span>
-                                     <input type="time" defaultValue={selectedItem.scheduledTime} onBlur={e => updateItem(selectedItem, {scheduledTime: e.target.value})} className="bg-transparent text-slate-400 text-xs font-mono outline-none hover:text-white transition" />
+                                     <div className="flex flex-col items-end gap-1">
+                                         <input type="time" defaultValue={selectedItem.scheduledTime} onBlur={e => updateItem(selectedItem, {scheduledTime: e.target.value})} className="bg-transparent text-slate-400 text-xs font-mono outline-none hover:text-white transition" />
+                                         {(() => {
+                                             const ch = selectedItem.channel?.toLowerCase() || '';
+                                             const bestTime = ch.includes('instagram') ? 'Tue/Wed/Fri 11am–1pm or 7–9pm' :
+                                                 ch.includes('youtube') || ch.includes('english') || ch.includes('vivek') ? 'Thu/Fri 12–4pm' :
+                                                 ch.includes('linkedin') ? 'Tue–Thu 8–10am or 12pm' :
+                                                 ch.includes('tiktok') ? 'Tue–Fri 7–9am or 7–11pm' : null;
+                                             return bestTime ? (
+                                                 <button onClick={() => { const [h,m] = (bestTime.includes('11am') ? ['11','00'] : bestTime.includes('12') ? ['12','00'] : bestTime.includes('8') ? ['08','00'] : bestTime.includes('7am') ? ['07','00'] : ['19','00']); updateItem(selectedItem, {scheduledTime: `${h}:${m}`}); }} className="text-[9px] text-amber-500/70 hover:text-amber-400 transition font-bold flex items-center gap-0.5" title="Click to auto-fill best time">📊 {bestTime}</button>
+                                             ) : null;
+                                         })()}
+                                     </div>
                                 </div>
                                 <div className="relative">
                                     <textarea 
@@ -1980,6 +2239,60 @@ export default function ContentOS() {
                                          <label className="text-[10px] uppercase text-slate-500 mb-2 font-bold flex items-center gap-2">Internal Notes</label>
                                          <textarea defaultValue={selectedItem.notes} onBlur={(e) => updateItem(selectedItem, {notes: e.target.value})} className="w-full bg-[#0B1121] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm h-20 text-slate-300 custom-scrollbar" placeholder="Any specific requirements for the team?" />
                                     </div>
+
+                                    {/* Performance Notes — only for Published items */}
+                                    {selectedItem.status === 'Published' && (
+                                        <div className="pt-4 border-t border-slate-800/50">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <label className="text-[10px] uppercase text-slate-500 font-bold tracking-widest flex items-center gap-2">📊 Post Performance</label>
+                                                {!showPerfModal && (
+                                                    <button onClick={() => { setPerfForm({ views: String(selectedItem.perf_views||''), likes: String(selectedItem.perf_likes||''), comments: String(selectedItem.perf_comments||''), shares: String(selectedItem.perf_shares||''), notes: selectedItem.perf_notes||'' }); setShowPerfModal(true); }} className="text-[11px] font-bold text-amber-500 hover:text-amber-400 transition">
+                                                        {selectedItem.perf_logged_at ? 'Edit Performance →' : 'Log Performance →'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {selectedItem.perf_logged_at && !showPerfModal && (
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {[['Views', selectedItem.perf_views],['Likes', selectedItem.perf_likes],['Comments', selectedItem.perf_comments],['Shares', selectedItem.perf_shares]].map(([k,v]) => (
+                                                        <div key={String(k)} className="bg-[#0B1121] border border-slate-800 rounded-lg p-2 text-center">
+                                                            <p className="text-lg font-black text-white">{v || '–'}</p>
+                                                            <p className="text-[9px] text-slate-500 uppercase font-bold">{String(k)}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            {showPerfModal && (
+                                                <div className="bg-[#0B1121] border border-amber-500/20 rounded-xl p-4 space-y-3">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        {[['Views','views'],['Likes','likes'],['Comments','comments'],['Shares','shares']].map(([label,key]) => (
+                                                            <div key={key}>
+                                                                <label className="text-[9px] uppercase text-slate-500 font-bold block mb-1">{label}</label>
+                                                                <input type="number" value={(perfForm as any)[key]} onChange={e => setPerfForm(f => ({...f, [key]: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white outline-none focus:border-amber-500" placeholder="0" />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[9px] uppercase text-slate-500 font-bold block mb-1">Notes (What worked? What didn't?)</label>
+                                                        <textarea value={perfForm.notes} onChange={e => setPerfForm(f=>({...f,notes:e.target.value}))} rows={2} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-300 outline-none focus:border-amber-500 resize-none custom-scrollbar" placeholder="Add context…" />
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => setShowPerfModal(false)} className="flex-1 py-2 rounded-lg border border-slate-700 text-slate-400 text-xs font-bold hover:bg-slate-800 transition">Cancel</button>
+                                                        <button onClick={() => {
+                                                            updateItem(selectedItem, {
+                                                                perf_views: perfForm.views ? parseInt(perfForm.views) : undefined,
+                                                                perf_likes: perfForm.likes ? parseInt(perfForm.likes) : undefined,
+                                                                perf_comments: perfForm.comments ? parseInt(perfForm.comments) : undefined,
+                                                                perf_shares: perfForm.shares ? parseInt(perfForm.shares) : undefined,
+                                                                perf_notes: perfForm.notes || undefined,
+                                                                perf_logged_at: new Date().toISOString(),
+                                                            } as any);
+                                                            setShowPerfModal(false);
+                                                        }} className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition">Save Performance</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
