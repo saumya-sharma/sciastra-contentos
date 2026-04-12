@@ -527,8 +527,14 @@ export default function ContentOS() {
 
     if (!role) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)] px-4">
-                <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl w-full max-w-md">
+            <div className="flex h-screen w-full items-center justify-center bg-[var(--color-background)] px-4 relative">
+                {/* Back to landing page */}
+                <a href="/landing" className="absolute top-5 left-5 text-xs text-slate-500 hover:text-slate-300 transition flex items-center gap-1.5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
+                    Back to Lume
+                </a>
+                <div className="w-full max-w-md flex flex-col items-center gap-5">
+                <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl w-full">
                     {/* Logo */}
                     <div className="text-center mb-8">
                         <div className="flex items-center justify-center gap-2 mb-3">
@@ -576,7 +582,7 @@ export default function ContentOS() {
                             >
                                 {authLoading ? 'Signing in…' : 'Sign In'}
                             </button>
-                            <p className="text-center text-[10px] text-slate-600">Need help? Contact <span className="text-slate-400">hello@getlume.com</span></p>
+                            <p className="text-center text-[10px] text-slate-600">Need help? <a href="mailto:hello@getlume.com" className="text-slate-400 hover:text-white transition">hello@getlume.com</a></p>
                         </div>
                     ) : (
                         <div className="space-y-4">
@@ -584,8 +590,8 @@ export default function ContentOS() {
                             {requestSent ? (
                                 <div className="text-center py-8">
                                     <div className="text-4xl mb-4">✅</div>
-                                    <p className="font-bold text-white mb-2">Request sent!</p>
-                                    <p className="text-slate-400 text-sm">You will receive an email when approved.</p>
+                                    <p className="font-bold text-white mb-2">Request received.</p>
+                                    <p className="text-slate-400 text-sm">We&apos;ll be in touch at <span className="text-slate-300">{requestForm.email}</span> within 48 hours.</p>
                                     <button onClick={() => { setRequestSent(false); setAuthView('login'); }} className="mt-4 text-xs text-[#639922] hover:underline">← Back to Sign In</button>
                                 </div>
                             ) : (
@@ -614,6 +620,14 @@ export default function ContentOS() {
                             )}
                         </div>
                     )}
+                </div>
+                {/* Don't have access CTA */}
+                <p className="text-sm text-slate-500 text-center">
+                    Don&apos;t have access yet?{' '}
+                    <a href="/landing#beta" className="text-[#e8a020] hover:text-[#f0b840] font-medium transition">
+                        Join the waitlist →
+                    </a>
+                </p>
                 </div>
             </div>
         );
@@ -770,7 +784,12 @@ export default function ContentOS() {
                             </>
                         )}
                     </nav>
-                    <div className="p-4 border-t border-slate-800 flex justify-between items-center">
+                    <div className="p-4 border-t border-slate-800 space-y-2">
+                        <a href="/landing" className="text-xs text-slate-600 hover:text-slate-400 transition flex items-center gap-1 w-full">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                            Home
+                        </a>
+                        <div className="flex justify-between items-center">
                         <button onClick={handleLogout} className="text-xs text-slate-500 hover:text-red-400 transition flex items-center gap-1">
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                             Sign Out
@@ -784,6 +803,7 @@ export default function ContentOS() {
                                 )}
                             </button>
                             <button onClick={() => {setShowTutorial(true); setTutorialStep(1);}} className="w-6 h-6 rounded-full bg-slate-800 text-slate-400 font-bold hover:text-white hover:bg-slate-700 transition flex items-center justify-center">?</button>
+                        </div>
                         </div>
                     </div>
                 </aside>
@@ -1346,7 +1366,7 @@ export default function ContentOS() {
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Email</label>
-                                                                    <input type="email" value={directInviteForm.email} onChange={e => setDirectInviteForm(f=>({...f,email:e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-indigo-500 outline-none rounded-lg p-2.5 text-sm text-white" placeholder="email@sciastra.com" />
+                                                                    <input type="email" value={directInviteForm.email} onChange={e => setDirectInviteForm(f=>({...f,email:e.target.value}))} className="w-full bg-[#0B1121] border border-slate-700 focus:border-indigo-500 outline-none rounded-lg p-2.5 text-sm text-white" placeholder="email@company.com" />
                                                                 </div>
                                                                 <div>
                                                                     <label className="text-[10px] uppercase text-slate-400 font-bold block mb-1">Role</label>
