@@ -113,6 +113,30 @@ export default function ContentOS() {
     const [zohoEnabled, setZohoEnabled] = useState(false);
     const [watiEnabled, setWatiEnabled] = useState(false);
 
+    // AI Brief Studio modal
+    const [showAiBriefModal, setShowAiBriefModal] = useState(false);
+    const [briefTitle, setBriefTitle] = useState('');
+    const [briefChannel, setBriefChannel] = useState('');
+    const [briefGoal, setBriefGoal] = useState('');
+    const [briefTone, setBriefTone] = useState('Educate & Inspire');
+    const [briefAudience, setBriefAudience] = useState('');
+    const [briefKeyPoints, setBriefKeyPoints] = useState('');
+    const [briefCTA, setBriefCTA] = useState('');
+    const [briefGenerating, setBriefGenerating] = useState(false);
+    const [briefResult, setBriefResult] = useState<null | {
+        hook: string; caption: string; hashtags: string; cta: string;
+        angles: string[]; thumbnail: string;
+        scores: { hook: number; trend: number; cta: number; fit: number; overall: number };
+    }>(null);
+    const [trendsOpen, setTrendsOpen] = useState(true);
+
+    // Escape key closes AI Brief modal
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowAiBriefModal(false); };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, []);
+
     useEffect(() => {
         // Clear stale legacy role-selector localStorage (old auth system)
         localStorage.removeItem('sa_role');
@@ -1719,6 +1743,17 @@ export default function ContentOS() {
                                     <div className="bg-[var(--color-surface)] border border-slate-800 rounded-xl p-5 shadow-inner shadow-black/20">
                                         <div className="flex justify-between items-center mb-6">
                                             <label className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${getBgClass(selectedItem.channel).split(' ')[0].replace('/30','')}`}></div> Active Content Brief</label>
+                                            <button
+                                                onClick={() => {
+                                                    setBriefTitle(selectedItem.title || '');
+                                                    setBriefChannel(selectedItem.channel || '');
+                                                    setBriefResult(null);
+                                                    setShowAiBriefModal(true);
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#639922]/15 border border-[#639922]/30 hover:bg-[#639922]/25 hover:border-[#639922]/60 text-[#639922] text-[11px] font-bold tracking-wide transition"
+                                            >
+                                                ✨ Brief with AI
+                                            </button>
                                         </div>
                                         
                                         <div className="space-y-4">
@@ -2090,6 +2125,333 @@ export default function ContentOS() {
                         </div>
                     </div>
                 </>
+            )}
+
+            {/* ── AI Brief Studio — Full-screen modal ─────────────────────── */}
+            {showAiBriefModal && (
+                <div
+                    className="fixed inset-0 z-[9999] flex flex-col"
+                    style={{
+                        background: '#0B1121',
+                        animation: 'aiBriefSlideUp 250ms ease-out both',
+                    }}
+                >
+                    <style>{`
+                        @keyframes aiBriefSlideUp {
+                            from { opacity: 0; transform: translateY(32px); }
+                            to   { opacity: 1; transform: translateY(0); }
+                        }
+                        .ai-col-scroll::-webkit-scrollbar { width: 4px; }
+                        .ai-col-scroll::-webkit-scrollbar-track { background: transparent; }
+                        .ai-col-scroll::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+                        .score-bar-fill { transition: width 1s cubic-bezier(0.16,1,.3,1); }
+                    `}</style>
+
+                    {/* Header */}
+                    <header className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-[#0B1121]">
+                        <div className="flex items-center gap-2 text-[#639922] font-black text-sm tracking-wide">
+                            <span className="text-base">✨</span> AI Brief Studio
+                        </div>
+                        <input
+                            value={briefTitle}
+                            onChange={e => setBriefTitle(e.target.value)}
+                            className="hidden md:block flex-1 max-w-xs mx-8 bg-transparent border-b border-slate-700 focus:border-[#639922] outline-none text-white text-sm font-bold text-center pb-1 placeholder:text-slate-600 transition"
+                            placeholder="Content item title…"
+                        />
+                        <button
+                            onClick={() => setShowAiBriefModal(false)}
+                            className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm font-bold transition px-3 py-1.5 rounded-lg hover:bg-slate-800"
+                        >
+                            <span className="text-lg leading-none">×</span> Close
+                        </button>
+                    </header>
+
+                    {/* Body — two-column on desktop, single column on mobile */}
+                    <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
+
+                        {/* ── LEFT COLUMN ── */}
+                        <div className="md:w-1/2 flex flex-col border-r border-slate-800/60 overflow-hidden">
+                            <div className="flex-1 overflow-y-auto ai-col-scroll px-6 py-6 space-y-6 pb-24 md:pb-6">
+
+                                {/* Trending Now panel */}
+                                <div className="rounded-xl border border-slate-800 overflow-hidden">
+                                    <button
+                                        className="w-full flex items-center justify-between px-4 py-3 bg-slate-900/60 hover:bg-slate-800/60 transition text-left"
+                                        onClick={() => setTrendsOpen(o => !o)}
+                                    >
+                                        <span className="flex items-center gap-2 text-xs font-black text-white uppercase tracking-widest">
+                                            🔥 Trending Now <span className="text-[#639922] font-mono text-[10px] normal-case font-normal">in science education</span>
+                                        </span>
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`text-slate-500 transition-transform ${trendsOpen ? 'rotate-180' : ''}`}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                    </button>
+                                    {trendsOpen && (
+                                        <div className="px-4 py-3 space-y-2 bg-[#0d1526]">
+                                            {[
+                                                { tag: '#JEE2026', heat: 92, note: 'Exam season approaching' },
+                                                { tag: '#NITVsIISER', heat: 78, note: 'Debate trending on X' },
+                                                { tag: '#ScienceCareer', heat: 71, note: 'Evergreen, high share rate' },
+                                                { tag: '#AIinEducation', heat: 65, note: 'Cross-niche opportunity' },
+                                                { tag: '#CollegeAdmissions', heat: 60, note: 'Parent audience spike' },
+                                            ].map(t => (
+                                                <div key={t.tag} className="flex items-center gap-3">
+                                                    <span
+                                                        className="text-[11px] font-bold text-[#639922] cursor-pointer hover:text-white transition shrink-0"
+                                                        onClick={() => setBriefKeyPoints(k => k ? `${k}, ${t.tag}` : t.tag)}
+                                                        title="Click to add to brief"
+                                                    >{t.tag}</span>
+                                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-[#639922]/70 rounded-full" style={{ width: `${t.heat}%` }} />
+                                                    </div>
+                                                    <span className="text-[10px] text-slate-500 shrink-0">{t.heat}</span>
+                                                    <span className="text-[10px] text-slate-600 hidden lg:block shrink-0">{t.note}</span>
+                                                </div>
+                                            ))}
+                                            <p className="text-[10px] text-slate-600 pt-1">Click a tag to add it to key points ↑</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Brief form */}
+                                <div className="space-y-4">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Brief Details</p>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-500 font-bold block">Content Title</label>
+                                        <input value={briefTitle} onChange={e => setBriefTitle(e.target.value)}
+                                            className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder:text-slate-600 transition"
+                                            placeholder="e.g. Why NISER is India's best science college" />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] uppercase text-slate-500 font-bold block">Channel</label>
+                                            <select value={briefChannel} onChange={e => setBriefChannel(e.target.value)}
+                                                className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white cursor-pointer transition">
+                                                <option value="">Select…</option>
+                                                {channelConfig.filter(c => !c.archived).map(c => (
+                                                    <option key={c.id} value={c.name}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] uppercase text-slate-500 font-bold block">Tone</label>
+                                            <select value={briefTone} onChange={e => setBriefTone(e.target.value)}
+                                                className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-2.5 text-sm text-white cursor-pointer transition">
+                                                {['Educate & Inspire', 'Hype & Urgency', 'Storytelling', 'Debate & Hook', 'Motivational', 'Data-Driven'].map(t => <option key={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-500 font-bold block">Content Goal</label>
+                                        <input value={briefGoal} onChange={e => setBriefGoal(e.target.value)}
+                                            className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder:text-slate-600 transition"
+                                            placeholder="e.g. Drive app downloads, grow subscribers, generate leads" />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-500 font-bold block">Target Audience</label>
+                                        <input value={briefAudience} onChange={e => setBriefAudience(e.target.value)}
+                                            className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder:text-slate-600 transition"
+                                            placeholder="e.g. Class 11-12 students preparing for JEE/NEET" />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-500 font-bold block">Key Points / Context</label>
+                                        <textarea value={briefKeyPoints} onChange={e => setBriefKeyPoints(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder:text-slate-600 resize-none transition custom-scrollbar"
+                                            placeholder="Key facts, angles, data points, or trending tags to include…" />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] uppercase text-slate-500 font-bold block">Desired CTA</label>
+                                        <input value={briefCTA} onChange={e => setBriefCTA(e.target.value)}
+                                            className="w-full bg-[#0d1526] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white placeholder:text-slate-600 transition"
+                                            placeholder="e.g. Download app, Comment below, Share with a friend" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Generate button — sticky at bottom of left column */}
+                            <div className="shrink-0 px-6 py-4 border-t border-slate-800 bg-[#0B1121]">
+                                <button
+                                    disabled={briefGenerating || !briefTitle.trim()}
+                                    onClick={async () => {
+                                        if (!briefTitle.trim()) return;
+                                        setBriefGenerating(true);
+                                        setBriefResult(null);
+                                        // Simulated generation (replace with real API call when ready)
+                                        await new Promise(r => setTimeout(r, 1800));
+                                        const ch = briefChannel.toLowerCase();
+                                        const isYT = ch.includes('english') || ch.includes('vivek') || ch.includes('12th') || ch.includes('11th') || ch.includes('college');
+                                        const isIG = ch.includes('instagram');
+                                        setBriefResult({
+                                            hook: isYT
+                                                ? `This one fact about ${briefTitle} will change how you study for JEE — most toppers never talk about this.`
+                                                : isIG
+                                                ? `POV: You just discovered the secret that NISER students don't share publicly 👀`
+                                                : `🚨 ${briefTitle} — everything you need to know in under 60 seconds.`,
+                                            caption: isIG
+                                                ? `${briefTitle}\n\nMost ${briefAudience || 'students'} have no idea about this.\n\n${briefKeyPoints ? `Key insight: ${briefKeyPoints.split(',')[0]}\n\n` : ''}Save this post before it disappears from your feed.\n\n${briefCTA || 'Drop a 🔥 if this was helpful!'}`
+                                                : `${briefTitle}\n\n${briefGoal ? `Our goal: ${briefGoal}` : 'Watch till the end — the last point changes everything.'}\n\n${briefCTA || 'Subscribe for more science content!'}`,
+                                            hashtags: isIG
+                                                ? '#SciAstra #JEE2026 #NITvIISER #ScienceEducation #IndianStudents #StudyMotivation'
+                                                : '#SciAstra #Education #JEE #NEET #ScienceIndia',
+                                            cta: briefCTA || (isYT ? 'Subscribe & hit the bell 🔔' : 'Save + share with a friend who needs this 📲'),
+                                            angles: [
+                                                `The Shock Angle: Lead with a counter-intuitive stat about ${briefTitle.split(' ').slice(0,3).join(' ')}`,
+                                                `The Story Angle: One student's journey — before and after discovering this`,
+                                                `The Debate Angle: "${briefTitle} — overrated or underrated?" — invite opinions`,
+                                                `The Data Angle: Hard numbers that prove the point within 5 seconds`,
+                                                `The FOMO Angle: "Most students find out too late — don't be one of them"`,
+                                            ],
+                                            thumbnail: isYT
+                                                ? `Bold text overlay: "${briefTitle.split(' ').slice(0,4).join(' ').toUpperCase()}" — dark background, high-contrast neon accent, shocked/serious face expression, SciAstra logo bottom-right`
+                                                : `Carousel cover: clean white card, bold headline text, SciAstra brand color accent strip`,
+                                            scores: { hook: 8, trend: 7, cta: 9, fit: 8, overall: 80 },
+                                        });
+                                        setBriefGenerating(false);
+                                    }}
+                                    className="w-full py-3.5 rounded-xl font-black text-sm tracking-wide transition flex items-center justify-center gap-2
+                                        bg-[#639922] hover:bg-[#4d7a18] text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    {briefGenerating ? (
+                                        <><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" strokeLinecap="round"/></svg> Generating…</>
+                                    ) : (
+                                        <><span>✨</span> Generate Brief</>
+                                    )}
+                                </button>
+                                {!briefTitle.trim() && <p className="text-[10px] text-slate-600 text-center mt-2">Add a content title to generate</p>}
+                            </div>
+                        </div>
+
+                        {/* ── RIGHT COLUMN ── */}
+                        <div className="md:w-1/2 overflow-y-auto ai-col-scroll px-6 py-6 space-y-6">
+                            {!briefResult && !briefGenerating ? (
+                                /* Empty state */
+                                <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center">
+                                    <svg width="64" height="64" viewBox="0 0 64 64" fill="none" className="mb-5 opacity-20">
+                                        <rect x="8" y="16" width="48" height="36" rx="6" stroke="#639922" strokeWidth="2"/>
+                                        <path d="M20 28h24M20 36h16" stroke="#639922" strokeWidth="2" strokeLinecap="round"/>
+                                        <path d="M44 8l4 4-4 4M50 12H40" stroke="#639922" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    <p className="text-slate-500 font-bold text-sm">Your brief will appear here</p>
+                                    <p className="text-slate-700 text-xs mt-1 max-w-[200px]">Fill in the form and hit Generate Brief</p>
+                                </div>
+                            ) : briefGenerating ? (
+                                /* Loading state */
+                                <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center gap-4">
+                                    <svg className="animate-spin text-[#639922]" width="32" height="32" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" strokeLinecap="round"/></svg>
+                                    <p className="text-slate-400 text-sm font-bold">Analysing channel, tone, trends…</p>
+                                    <p className="text-slate-600 text-xs">Building 5 content angles for you</p>
+                                </div>
+                            ) : briefResult && (
+                                /* Results */
+                                <div className="space-y-6">
+
+                                    {/* Score bars */}
+                                    <div className="bg-[#0d1526] border border-slate-800 rounded-xl p-5">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Content Score</p>
+                                        <div className="space-y-3">
+                                            {[
+                                                { label: 'Hook strength',   val: briefResult.scores.hook,  max: 10, pct: briefResult.scores.hook * 10 },
+                                                { label: 'Trend alignment', val: briefResult.scores.trend, max: 10, pct: briefResult.scores.trend * 10 },
+                                                { label: 'CTA clarity',     val: briefResult.scores.cta,   max: 10, pct: briefResult.scores.cta * 10 },
+                                                { label: 'Platform fit',    val: briefResult.scores.fit,   max: 10, pct: briefResult.scores.fit * 10 },
+                                            ].map(s => (
+                                                <div key={s.label} className="flex items-center gap-3">
+                                                    <span className="text-xs text-slate-400 w-32 shrink-0">{s.label}</span>
+                                                    <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                                                        <div className="score-bar-fill h-full bg-[#639922] rounded-full" style={{ width: `${s.pct}%` }} />
+                                                    </div>
+                                                    <span className="text-xs font-bold text-white w-8 text-right">{s.val}/10</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                                            <span className="text-xs text-slate-400 font-bold">Overall</span>
+                                            <span className="text-2xl font-black text-[#639922]">{briefResult.scores.overall}<span className="text-sm text-slate-500 font-normal">/100</span></span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-1 text-right">
+                                            {briefResult.scores.overall >= 80 ? '— Strong brief. Ready to shoot.' : briefResult.scores.overall >= 60 ? '— Solid. Consider refining the hook.' : '— Needs more context. Add key points.'}
+                                        </p>
+                                    </div>
+
+                                    {/* Hook */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Opening Hook</p>
+                                            <button onClick={() => navigator.clipboard.writeText(briefResult.hook)} className="text-[10px] text-slate-600 hover:text-[#639922] transition font-bold">Copy</button>
+                                        </div>
+                                        <div className="bg-[#0d1526] border border-[#639922]/20 rounded-xl p-4">
+                                            <p className="text-white text-sm leading-relaxed">{briefResult.hook}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* 5 Angles */}
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">5 Content Angles</p>
+                                        <div className="space-y-2">
+                                            {briefResult.angles.map((a, i) => (
+                                                <div key={i} className="flex gap-3 bg-[#0d1526] border border-slate-800 rounded-lg p-3">
+                                                    <span className="text-[#639922] font-black text-xs shrink-0 mt-0.5">{i + 1}</span>
+                                                    <p className="text-slate-300 text-xs leading-relaxed">{a}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Caption */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Caption Draft</p>
+                                            <button onClick={() => navigator.clipboard.writeText(briefResult.caption)} className="text-[10px] text-slate-600 hover:text-[#639922] transition font-bold">Copy</button>
+                                        </div>
+                                        <pre className="bg-[#0d1526] border border-slate-800 rounded-xl p-4 text-slate-300 text-xs leading-relaxed whitespace-pre-wrap font-sans">{briefResult.caption}</pre>
+                                    </div>
+
+                                    {/* Hashtags */}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hashtags</p>
+                                            <button onClick={() => navigator.clipboard.writeText(briefResult.hashtags)} className="text-[10px] text-slate-600 hover:text-[#639922] transition font-bold">Copy</button>
+                                        </div>
+                                        <div className="bg-[#0d1526] border border-slate-800 rounded-xl p-4">
+                                            <p className="text-[#639922] text-xs leading-relaxed">{briefResult.hashtags}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* CTA */}
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Call to Action</p>
+                                        <div className="bg-[#0d1526] border border-slate-800 rounded-xl p-4">
+                                            <p className="text-white text-sm">{briefResult.cta}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Thumbnail brief (YT only) */}
+                                    {briefResult.thumbnail && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thumbnail Direction</p>
+                                            <div className="bg-[#0d1526] border border-slate-800 rounded-xl p-4">
+                                                <p className="text-slate-300 text-xs leading-relaxed">{briefResult.thumbnail}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Apply to drawer button */}
+                                    <button
+                                        onClick={() => setShowAiBriefModal(false)}
+                                        className="w-full py-3 rounded-xl bg-[#639922] hover:bg-[#4d7a18] text-white font-black text-sm transition mt-2"
+                                    >
+                                        ← Back to Drawer
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
