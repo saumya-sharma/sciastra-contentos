@@ -1,81 +1,127 @@
 import { NextResponse } from 'next/server';
-import * as cheerio from 'cheerio';
-import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@supabase/supabase-js';
-import { requireCronSecret } from '@/lib/requireAuth';
+import { sendNotification } from '@/lib/notify';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Securing the cron so it can't just be pinged externally blindly
+// Normally Vercel passes a Cron Auth header
+const CRON_SECRET = process.env.CRON_SECRET || 'lume-cron-secret';
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
 
 export async function GET(req: Request) {
-    const cronCheck = requireCronSecret(req);
-    if (cronCheck) return cronCheck;
-
-    const examsToAdd: any[] = [];
-    console.log("Starting cron to fetch live exam dates...");
-
-    // 1. Fetch NEST Exam Dates
-    try {
-        const nestHtml = await fetch('https://www.nestexam.in/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0' }
-        }).then(res => res.text());
-        const $ = cheerio.load(nestHtml);
-        
-        const pageText = $('body').text().replace(/\s+/g, ' ');
-        const nestMatch = pageText.match(/date of examination.*?(\d{1,2}\s+[a-zA-Z]+\s+\d{4})/i); 
-        
-        if (!nestMatch) console.warn('[cron] Using fallback date for NEST — could not parse from page text');
-        let nestDate = nestMatch ? new Date(nestMatch[1]) : new Date('2026-06-30T00:00:00Z');
-        
-        examsToAdd.push({
-            id: uuidv4(),
-            title: 'NEST 2026 Examination',
-            type: 'Exam',
-            channel: 'Exams',
-            date: nestDate.toISOString().split('T')[0],
-            status: 'Ready'
-        });
-    } catch (e) {
-        console.error("Failed NEST fetch", e);
+    const authHeader = req.headers.get('authorization');
+    if (authHeader !== `Bearer ${CRON_SECRET}` && process.env.NODE_ENV !== 'development') {
+        // Return 401 if unauthorized in production
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 2. Fetch NISER / IAT 
     try {
-        const iatHtml = await fetch('https://iiseradmission.in/', { 
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        }).then(res => res.text());
-        const $2 = cheerio.load(iatHtml);
-        const pageText2 = $2('body').text().replace(/\s+/g, ' ');
-        const iatMatch = pageText2.match(/IAT.*?(\d{1,2}\s+[a-zA-Z]+\s+\d{4})/i); 
-        
-        if (!iatMatch) console.warn('[cron] Using fallback date for IAT/IISER — could not parse from page text');
-        let iatDate = iatMatch ? new Date(iatMatch[1]) : new Date('2026-06-09T00:00:00Z');
+        // 1. Fetch Admin Emails
+        const { data: admins, error: adminErr } = await supabase
+            .from('user_roles')
+            .select('email')
+            .eq('role', 'ADMIN')
+            .eq('is_active', true);
 
-        examsToAdd.push({
-            id: uuidv4(),
-            title: 'IAT (IISER Aptitude Test) 2026',
-            type: 'Exam',
-            channel: 'Exams',
-            date: iatDate.toISOString().split('T')[0],
-            status: 'Ready'
-        });
-    } catch (e) {
-        console.error("Failed IAT fetch", e);
-    }
-
-    // Deduplicate against existing DB exam records
-    const { data: existing } = await supabase.from('content_items').select('title, type').eq('type', 'Exam');
-    const existingTitles = new Set(existing?.map(e => e.title) || []);
-    
-    for (const ex of examsToAdd) {
-        if (!existingTitles.has(ex.title)) {
-            await supabase.from('content_items').insert(ex);
+        if (adminErr || !admins || admins.length === 0) {
+            return NextResponse.json({ message: 'No admins found to notify.' });
         }
-    }
 
-    return NextResponse.json({ 
-        message: 'Cron job ran successfully. Live dates parsed and stored.', 
-        examsFetched: examsToAdd 
-    });
+        const adminEmails = admins.map(a => a.email).filter(Boolean);
+
+        // 2. Fetch all items
+        const { data: items, error: itemsErr } = await supabase
+            .from('content_items')
+            .select('title, status, date, assignees, created_at');
+
+        if (itemsErr) throw itemsErr;
+
+        // Calculations
+        const now = new Date();
+        const startOfThisWeek = new Date(now);
+        const dayOfWeek = now.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startOfThisWeek.setDate(now.getDate() - daysToMonday);
+        startOfThisWeek.setHours(0, 0, 0, 0);
+
+        const oneWeekAgo = new Date(now);
+        oneWeekAgo.setDate(now.getDate() - 7);
+
+        // a. Published last 7 days
+        const publishedLast7Days = (items || []).filter(i => {
+            if (i.status !== 'Published') return false;
+            const updatedDate = i.date ? new Date(i.date) : new Date(i.created_at);
+            return updatedDate >= oneWeekAgo && updatedDate <= now;
+        });
+
+        const publishedTitlesHtml = publishedLast7Days.map(i => `<li>${i.title || 'Untitled'}</li>`).join('');
+
+        // b. This week planned
+        const thisWeekPlanned = (items || []).filter(i => {
+            if (i.status === 'Published') return false;
+            const dueDate = i.date ? new Date(i.date) : null;
+            return dueDate && dueDate >= startOfThisWeek && dueDate < new Date(startOfThisWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+        });
+
+        // c. Overdue
+        const overdueItems = (items || []).filter(i => {
+            if (i.status === 'Published') return false;
+            const dueDate = i.date ? new Date(i.date) : null;
+            return dueDate && dueDate < startOfThisWeek;
+        });
+        
+        const overdueTitlesHtml = overdueItems.length > 0 
+            ? overdueItems.map(i => `<li>${i.title} (Due: ${i.date})</li>`).join('')
+            : 'None';
+
+        // d. Top performer
+        const performerCounts: Record<string, number> = {};
+        publishedLast7Days.forEach(i => {
+            const smm = i.assignees?.smm;
+            if (smm) {
+                performerCounts[smm] = (performerCounts[smm] || 0) + 1;
+            }
+        });
+        
+        let topPerformer = 'N/A';
+        let topCount = 0;
+        for (const [smm, count] of Object.entries(performerCounts)) {
+            if (count > topCount) {
+                topCount = count;
+                topPerformer = smm;
+            }
+        }
+
+        // Construct HTML Body Segment
+        const bodyContent = `
+            <h3>Overview</h3>
+            <p><strong>Published Last 7 Days:</strong> ${publishedLast7Days.length}</p>
+            <ul>${publishedTitlesHtml}</ul>
+
+            <br/>
+            <p><strong>Planned This Week:</strong> ${thisWeekPlanned.length} items</p>
+            <p><strong>Top Performer:</strong> ${topPerformer} (${topCount} items)</p>
+
+            <br/>
+            <p><strong>Overdue Action Required:</strong> ${overdueItems.length} items</p>
+            <ul>${overdueTitlesHtml}</ul>
+        `;
+
+        await sendNotification({
+            to: adminEmails,
+            subject: `Lume Weekly — ${now.toLocaleDateString()}`,
+            title: `Your content team this week`,
+            body: bodyContent,
+            ctaText: "Open Lume Pipeline →",
+            ctaUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.getlume.com'
+        });
+
+        return NextResponse.json({ success: true, message: `Digest sent to ${adminEmails.length} admins` });
+
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
+    }
 }

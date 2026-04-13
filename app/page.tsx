@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 
 type AuditLog = { user: string; action: string; timestamp: string };
 type Item = { id: string; title: string; type: string; channel: string; date: string; scheduledTime?: string; status: string; assignees?: { smm?: string, editor?: string, designer?: string }; campaignId?: string; driveLink?: string; notes?: string; approval?: string; auditLog?: AuditLog[]; assets?: any[]; perf_views?: number; perf_likes?: number; perf_comments?: number; perf_shares?: number; perf_notes?: string; perf_logged_at?: string; };
-type TeamMember = { id: string; name: string; role: string; whatsapp: string; active?: boolean; channels?: string[] };
+type TeamMember = { id: string; name: string; role: string; email: string; phone?: string; active?: boolean; channels?: string[] };
 type Campaign = { id: string, name: string, target?: string, exam?: string, startDate?: string, endDate?: string };
 type Idea = { id: string; content: string; platform?: string; created_by?: string; converted?: boolean; converted_item_id?: string; created_at: string };
 
@@ -121,7 +121,7 @@ export default function ContentOS() {
     const [loginStep, setLoginStep] = useState<'role' | 'smm-pick'>('role');
     const [showTutorial, setShowTutorial] = useState(false);
     const [tutorialStep, setTutorialStep] = useState(1);
-    const [newMember, setNewMember] = useState({ name: '', role: 'CREATOR', whatsapp: '+91', channels: [] as string[] });
+    const [newMember, setNewMember] = useState({ name: '', role: 'CREATOR', email: '', phone: '', channels: [] as string[] });
 
     // Filters
     const [filterChannel, setFilterChannel] = useState('');
@@ -135,7 +135,7 @@ export default function ContentOS() {
     // Notify Teams inline panel
     const [showNotifyPanel, setShowNotifyPanel] = useState(false);
     const [notifyTeams, setNotifyTeams] = useState<string[]>([]);
-    const [notifyChannel, setNotifyChannel] = useState<'zoho'|'wati'|'both'>('zoho');
+    const [notifyChannel, setNotifyChannel] = useState<'email'>('email');
     const [notifyMessageType, setNotifyMessageType] = useState('batch_live');
     const [notifyCustomMsg, setNotifyCustomMsg] = useState('');
     const [notifySending, setNotifySending] = useState(false);
@@ -318,21 +318,40 @@ export default function ContentOS() {
         setRole(null);
     };
 
-    const triggerWhatsApp = async (item: Item) => {
-        setToast('Sending...');
-        await authFetch('/api/notify', {
-             method: 'POST', body: JSON.stringify({
-                 recipientName: item.assignees?.smm || 'Admin',
-                 whatsappNumber: '+919999999999',
-                 notificationType: 'Manual Trigger',
-                 title: item.title,
-                 channel: item.channel,
-                 scheduledTime: item.scheduledTime,
-                 taskId: item.id
-             })
-        });
-        setToast('WhatsApp notification queued');
-        setTimeout(() => setToast(''), 4000);
+    const triggerEmailNotification = async (item: Item) => {
+        if (!item || !role || role !== 'ADMIN') return;
+        setToast('Queueing email notification...');
+        try {
+            // Find assignee's email recursively via SMM 
+            const assigneeName = item.assignees?.smm || item.assignees?.editor;
+            const emails: string[] = [];
+            if (assigneeName) {
+                const smmM = team.find(m => m.name.startsWith(assigneeName));
+                if (smmM?.email) emails.push(smmM.email);
+            }
+
+            const res = await fetch('/api/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    emails: emails,
+                    subject: `Manual Sync: ${item.title || 'Task'}`,
+                    title: `System Alert for ${item.title || 'Task'}`,
+                    message: `Admin has manually pinged you to review the workflow status for ${item.channel}. Please check Lume and take action.`,
+                    taskId: item.id
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setToast('Notification sent successfully!');
+                refreshData(); 
+            } else {
+                setToast('Failed to send notification');
+            }
+        } catch (e) {
+            console.error(e);
+            setToast('Failed sending notification');
+        }
     };
 
     const showSavedToast = () => {
@@ -1350,15 +1369,6 @@ export default function ContentOS() {
 
                                 {activeTab === 'team' && role === 'ADMIN' && (
                                     <div className="max-w-4xl space-y-6">
-                                        {!config.hasWatiKey && (
-                                            <div className="bg-orange-500/10 border border-orange-500/50 p-4 rounded-xl flex gap-3">
-                                                <span className="text-orange-500">⚠️</span>
-                                                <div>
-                                                    <h4 className="font-bold text-orange-400 text-sm">WATI API Not Configured</h4>
-                                                    <p className="text-orange-200/70 text-xs mt-1">WhatsApp notifications are running in Mock Mode. Add <code>WATI_API_KEY</code> and <code>WATI_ENDPOINT</code> to your deployment environments to enable live API sync.</p>
-                                                </div>
-                                            </div>
-                                        )}
                                         <div className="bg-[var(--color-surface)] rounded-xl border border-slate-800 overflow-hidden">
                                             {/* Tab Bar */}
                                             <div className="flex border-b border-slate-800 bg-slate-900/50">
@@ -1402,7 +1412,7 @@ export default function ContentOS() {
                                                                     <input type="text" defaultValue={member.name} onBlur={(e) => updateTeamMember({...member, name: e.target.value})} className="bg-transparent font-bold text-white outline-none focus:border-b focus:border-[#639922] transition w-48"/>
                                                                     <div className="text-xs text-slate-500 flex gap-4 mt-1 items-center">
                                                                         <span>Phone: </span>
-                                                                        <input type="tel" placeholder="Add phone..." defaultValue={member.whatsapp} onBlur={(e) => updateTeamMember({...member, whatsapp: e.target.value})} className="bg-[#0B1121] border border-slate-700 hover:border-slate-500 focus:border-[#639922] outline-none text-slate-300 w-32 rounded px-2 py-1 transition cursor-text pointer-events-auto" />
+                                                                        <input type="email" placeholder="Add email..." defaultValue={member.email} onBlur={(e) => updateTeamMember({...member, email: e.target.value})} className="bg-[#0B1121] border border-slate-700 hover:border-slate-500 focus:border-[#639922] outline-none text-slate-300 w-44 rounded px-2 py-1 transition cursor-text pointer-events-auto" />
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -1877,7 +1887,7 @@ export default function ContentOS() {
                         <div className="space-y-1">
                             <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">Platform</label>
                             <div className="flex flex-wrap gap-2">
-                                {['YouTube','Instagram','LinkedIn','TikTok','X','WhatsApp'].map(p => (
+                                {['YouTube','Instagram','LinkedIn','TikTok','X','Email'].map(p => (
                                     <button key={p} onClick={() => setQuickPostForm(f => ({...f, platform: p}))} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${quickPostForm.platform === p ? 'bg-[#639922] border-[#639922] text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}>{p}</button>
                                 ))}
                             </div>
@@ -1954,8 +1964,8 @@ export default function ContentOS() {
                             )}
                             {tutorialStep === 5 && (
                                 <div>
-                                    <h3 className="font-bold text-[#639922] mb-2 text-lg">WhatsApp Firing</h3>
-                                    <p className="text-slate-300">Admin triggers the WhatsApp notification pushing the exact scheduled time & copy instructions back to the SMM.</p>
+                                    <h3 className="font-bold text-[#639922] mb-2 text-lg">Push Email Update</h3>
+                                    <p className="text-slate-300">Admin triggers an email notification pushing the exact task state & instructions back to the SMM.</p>
                                 </div>
                             )}
                         </div>
@@ -1993,8 +2003,8 @@ export default function ContentOS() {
                                 <input type="text" value={newMember.name} onChange={e=>setNewMember({...newMember, name:e.target.value})} className="w-full bg-[var(--color-surface)] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white" placeholder="e.g. John Doe"/>
                             </div>
                             <div>
-                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">WhatsApp Number</label>
-                                <input type="tel" value={newMember.whatsapp} onChange={e=>setNewMember({...newMember, whatsapp:e.target.value})} className="w-full bg-[var(--color-surface)] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white font-mono" placeholder="+91"/>
+                                <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Email Address</label>
+                                <input type="email" value={newMember.email} onChange={e=>setNewMember({...newMember, email:e.target.value})} className="w-full bg-[var(--color-surface)] border border-slate-800 focus:border-[#639922] outline-none rounded-lg p-3 text-sm text-white font-mono" placeholder="member@getlume.com"/>
                             </div>
                             <div>
                                 <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 block">Platform Role</label>
@@ -2025,7 +2035,7 @@ export default function ContentOS() {
                                 const id = newMember.name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random()*1000);
                                 updateTeamMember({...newMember, id, active: true});
                                 setShowOnboardModal(false);
-                                setNewMember({ name: '', role: 'CREATOR', whatsapp: '+91', channels: [] });
+                                setNewMember({ name: '', role: 'CREATOR', email: '', phone: '', channels: [] });
                             }} className="bg-[#639922] text-white px-6 py-2 rounded-lg text-xs font-bold hover:bg-[#4d7a18] transition disabled:opacity-50">Save Identity</button>
                         </div>
                     </div>
@@ -2344,7 +2354,7 @@ export default function ContentOS() {
                                     </div>
 
                                     {/* Action History / Webhook logs */}
-                                    <h4 className="text-xs font-bold text-[#25D366] uppercase tracking-widest mb-6 mt-10">WATI Transmission Logs</h4>
+                                    <h4 className="text-xs font-bold text-[#639922] uppercase tracking-widest mb-6 mt-10">Email Dispatch Logs</h4>
                                     <div className="space-y-4 pl-3 relative before:absolute before:inset-0 before:ml-[1.4rem] before:h-full before:w-[2px] before:bg-green-900/40">
                                         {notifications.filter((n: any) => n.taskId === selectedItem.id).length > 0 ? notifications.filter((n: any) => n.taskId === selectedItem.id).map((log: any, idx: number) => (
                                             <div key={idx} className="relative flex items-start gap-4">
@@ -2361,7 +2371,7 @@ export default function ContentOS() {
                                                 </div>
                                             </div>
                                         )) : (
-                                            <span className="text-xs text-slate-600 block pl-8 italic font-medium">No WhatsApp messages fired for this component.</span>
+                                            <span className="text-xs text-slate-600 block pl-8 italic font-medium">No system emails sent for this component.</span>
                                         )}
                                     </div>
 
@@ -2460,9 +2470,7 @@ export default function ContentOS() {
                                                         <p className="text-[10px] uppercase font-bold text-slate-400 mb-2 tracking-widest">Channel</p>
                                                         <div className="flex flex-col gap-1.5">
                                                             {[
-                                                                { value: 'zoho',  label: 'Zoho Mail', enabled: zohoEnabled },
-                                                                { value: 'wati',  label: 'WhatsApp (WATI)', enabled: watiEnabled },
-                                                                { value: 'both',  label: 'Both', enabled: zohoEnabled || watiEnabled },
+                                                                { value: 'email',  label: 'Email (Resend)', enabled: true }
                                                             ].map(opt => (
                                                                 <label key={opt.value} className={`flex items-center gap-2.5 ${opt.enabled ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
                                                                     <input
@@ -2471,13 +2479,10 @@ export default function ContentOS() {
                                                                         value={opt.value}
                                                                         checked={notifyChannel === opt.value}
                                                                         disabled={!opt.enabled}
-                                                                        onChange={() => setNotifyChannel(opt.value as 'zoho'|'wati'|'both')}
+                                                                        onChange={() => setNotifyChannel(opt.value as 'email')}
                                                                         className="accent-indigo-500"
                                                                     />
                                                                     <span className="text-sm text-slate-300">{opt.label}</span>
-                                                                    {!opt.enabled && opt.value !== 'both' && (
-                                                                        <span className="text-[9px] text-slate-500 italic">(not configured)</span>
-                                                                    )}
                                                                 </label>
                                                             ))}
                                                         </div>
@@ -2519,7 +2524,7 @@ export default function ContentOS() {
                                                         >Cancel</button>
                                                         <button
                                                             onClick={sendNotification}
-                                                            disabled={notifySending || !notifyTeams.length || (!zohoEnabled && !watiEnabled)}
+                                                            disabled={notifySending || !notifyTeams.length}
                                                             className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition disabled:opacity-50 disabled:cursor-not-allowed"
                                                         >
                                                             {notifySending ? 'Sending…' : 'Send Notification'}
@@ -2532,11 +2537,11 @@ export default function ContentOS() {
 
                                     {/* Webhook Action Trigger */}
                                     <div className="mt-8 pt-6 border-t border-slate-800/50">
-                                        <button onClick={() => triggerWhatsApp(selectedItem)} className="w-full bg-[#25D366]/10 border border-[#25D366]/30 hover:bg-[#25D366]/20 hover:border-[#25D366]/50 text-[#25D366] font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 transition shadow-lg">
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.498 14.382c-.301-.15-1.767-.867-2.04-.966-.273-.101-.473-.15-.673.15-.197.295-.771.964-.944 1.162-.175.195-.349.21-.646.075-.3-.15-1.263-.465-2.403-1.485-.888-.795-1.484-1.77-1.66-2.07-.174-.3-.019-.465.13-.615.136-.135.301-.345.451-.525.146-.18.194-.3.297-.495.098-.21.05-.39-.024-.54-.075-.15-.673-1.62-.922-2.206-.24-.584-.487-.51-.672-.51-.172-.015-.371-.015-.571-.015-.2 0-.523.074-.797.359-.273.3-1.045 1.02-1.045 2.475s1.07 2.865 1.219 3.075c.149.21 2.095 3.18 5.077 4.455.71.3 1.264.48 1.693.615.714.225 1.365.195 1.874.12.576-.09 1.767-.72 2.016-1.426.248-.705.248-1.305.174-1.425-.074-.12-.274-.195-.575-.345h-.001zm-5.46-11.83C7.545 2.551 3.87 6.226 3.87 10.718c0 1.487.352 2.923 1.059 4.221l-1.472 5.378 5.5-1.442c1.233.644 2.65 1.002 4.081 1.002h.004c4.493 0 8.167-3.674 8.168-8.167 0-2.175-.845-4.22-2.383-5.759-1.536-1.54-3.582-2.386-5.76-2.388h-.001-.001zM11.996 2h.001A9.972 9.972 0 0 1 22 11.998c0 2.67-1.04 5.178-2.927 7.067C17.185 20.952 14.673 22 12.001 22h-.004c-1.696 0-3.344-.43-4.81-1.246l-.348-.194-3.568.936.953-3.48-.21-.334A9.977 9.977 0 0 1 2 11.998C2 6.484 6.48 2 11.996 2z"/></svg>
-                                            Trigger WhatsApp Workflow Sync
+                                        <button onClick={() => triggerEmailNotification(selectedItem)} className="w-full bg-[#639922]/10 border border-[#639922]/30 hover:bg-[#639922]/20 hover:border-[#639922]/50 text-[#639922] font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 transition shadow-lg">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                            Send Email Notification
                                         </button>
-                                        <p className="text-[9px] text-slate-500 text-center mt-2 font-medium">Sends payload to internal webhook simulating WATI integration.</p>
+                                        <p className="text-[9px] text-slate-500 text-center mt-2 font-medium">Fires an immediate alert to the assignee via Resend.</p>
                                     </div>
 
                                     {/* Fix 2: Delete Post — ADMIN only */}

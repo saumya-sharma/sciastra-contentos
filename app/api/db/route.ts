@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/requireAuth';
+import { sendNotification } from '@/lib/notify';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -86,6 +87,41 @@ export async function PUT(req: Request) {
     
     // fetch back updated
     const { data: updated } = await supabase.from('content_items').select('*').eq('id', id).single();
+
+    // Trigger A: Status change
+    if (body.status && item.status !== body.status) {
+        const smmName = updated.assignees?.smm;
+        if (smmName) {
+            const { data: smmData } = await supabase.from('team_members').select('email').ilike('name', `${smmName}%`).limit(1).single();
+            if (smmData?.email) {
+                await sendNotification({
+                    to: smmData.email,
+                    subject: `Content update: ${updated.title || 'Untitled'}`,
+                    title: `${updated.title || 'Untitled'} moved to ${body.status}`,
+                    body: `${_actor || 'System'} moved this to ${body.status} on ${new Date().toLocaleDateString()}`,
+                    ctaText: "View in Lume →",
+                    ctaUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.getlume.com'
+                });
+            }
+        }
+    }
+
+    // Trigger E: Approval needed
+    if (body.approval === 'Ready to Publish' && item.approval !== 'Ready to Publish') {
+        const { data: adminData } = await supabase.from('user_roles').select('email').eq('role', 'ADMIN').eq('is_active', true);
+        const adminEmails = (adminData || []).map(a => a.email).filter(Boolean);
+        if (adminEmails.length > 0) {
+            await sendNotification({
+                to: adminEmails,
+                subject: `Ready for approval: ${updated.title || 'Untitled'}`,
+                title: `${updated.title || 'Untitled'} needs your approval`,
+                body: `${updated.assignees?.smm || 'The team'} has marked this ready. Review and approve to publish.`,
+                ctaText: "Review now →",
+                ctaUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.getlume.com'
+            });
+        }
+    }
+
     return NextResponse.json(updated);
 }
 
@@ -97,6 +133,23 @@ export async function POST(req: Request) {
     if (body._action === 'CREATE_ITEM') {
         const { error } = await supabase.from('content_items').insert(body.item);
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+        // Trigger B: New Assignee
+        const smmName = body.item.assignees?.smm || body.item.assignees?.editor;
+        if (smmName) {
+            const { data: smmData } = await supabase.from('team_members').select('email').ilike('name', `${smmName}%`).limit(1).single();
+            if (smmData?.email) {
+                await sendNotification({
+                    to: smmData.email,
+                    subject: "New content assigned to you",
+                    title: `You've been assigned: ${body.item.title || 'Untitled'}`,
+                    body: `${body._actor || 'Admin'} assigned you to work on ${body.item.title || 'Untitled'} for ${body.item.channel || 'Lume'}. Due: ${body.item.date || 'TBD'}`,
+                    ctaText: "Open in Lume →",
+                    ctaUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.getlume.com'
+                });
+            }
+        }
+
         return NextResponse.json({ success: true, item: body.item });
     }
     if (body._action === 'CREATE_IDEA') {

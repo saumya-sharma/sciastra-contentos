@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAuth } from '@/lib/requireAuth';
+import { sendNotification } from '@/lib/notify';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
@@ -134,6 +135,17 @@ export async function POST(req: Request) {
       is_active: true,
       channels: [],
     });
+
+    // Trigger C: Send welcome context email
+    await sendNotification({
+        to: email,
+        subject: "You've been added to Lume",
+        title: "Welcome to the team on Lume",
+        body: `You've been invited to collaborate as ${role}. Check your email for a separate link to set your password.`,
+        ctaText: "Learn about Lume →",
+        ctaUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://app.getlume.com'
+    });
+
     return NextResponse.json({ success: true });
   }
 

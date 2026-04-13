@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.team_members (
     role TEXT NOT NULL,
     whatsapp TEXT,
     active BOOLEAN DEFAULT true,
+    email TEXT,
     channels JSONB DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
