@@ -7,15 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-const CHANNEL_NAMES = [
-  'Vivek NISER | SciAstra',
-  'Instagram',
-  'SciAstra English',
-  'SciAstra 11th',
-  'SciAstra 12th',
-  'SciAstra College',
-  'SciAstra Whatsapp/emails/notifications',
-];
+// Dynamic unique channel mapping from DB items
 
 export async function GET(req: Request) {
   const auth = await requireAuth(req);
@@ -150,7 +142,8 @@ export async function GET(req: Request) {
     startOfWeek.setDate(now.getDate() - daysToMonday);
     startOfWeek.setHours(0, 0, 0, 0);
 
-    const channelCadence = CHANNEL_NAMES.map((channel) => {
+    const uniqueChannels = Array.from(new Set(items.map((i: any) => i.channel).filter(Boolean))) as string[];
+    const channelCadence = uniqueChannels.map((channel) => {
       const published = publishedItems.filter((i: any) => {
         if (i.channel !== channel) return false;
         const d = i.date ? new Date(i.date) : null;
@@ -158,6 +151,17 @@ export async function GET(req: Request) {
       }).length;
       return { channel, published, target: 3 };
     });
+
+    // performanceTracking: aggregate manually logged performance data across all items
+    let performanceTracking = { totalViews: 0, totalLikes: 0, totalComments: 0, totalShares: 0 };
+    for (const item of items) {
+      if ((item as any).perf_logged_at) {
+        performanceTracking.totalViews += Number((item as any).perf_views) || 0;
+        performanceTracking.totalLikes += Number((item as any).perf_likes) || 0;
+        performanceTracking.totalComments += Number((item as any).perf_comments) || 0;
+        performanceTracking.totalShares += Number((item as any).perf_shares) || 0;
+      }
+    }
 
     // examReadiness: published count per upcoming exam (items with channel 'Exams' in next 90 days)
     const examItems = items.filter((i: any) => i.type === 'Exam' || i.channel === 'Exams');
@@ -187,6 +191,7 @@ export async function GET(req: Request) {
       teamOutput,
       channelCadence,
       examReadiness,
+      performanceTracking,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

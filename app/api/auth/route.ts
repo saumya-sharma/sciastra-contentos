@@ -53,7 +53,7 @@ export async function GET(req: Request) {
 
   // Super admins bypass user_roles table
   if (email === SUPER_ADMIN_EMAIL || email === OFFICE_ADMIN_EMAIL) {
-    return NextResponse.json({ role: 'ADMIN', name: 'Admin', is_active: true });
+    return NextResponse.json({ role: 'ADMIN', name: '', is_active: true });
   }
 
   const { data, error } = await supabase

@@ -562,6 +562,7 @@ export default function ContentOS() {
         setRole(null);
         setUserEmail('');
         setUserName('Unknown');
+        window.location.reload();
     };
 
     if (!role) {
@@ -570,7 +571,7 @@ export default function ContentOS() {
                 {/* Back to landing page */}
                 <a href="/landing" className="absolute top-5 left-5 text-xs text-slate-500 hover:text-slate-300 transition flex items-center gap-1.5">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M5 12l7-7M5 12l7 7"/></svg>
-                    Back to Lume
+                    ← Home
                 </a>
                 <div className="w-full max-w-md flex flex-col items-center gap-5">
                 <div className="bg-[var(--color-surface)] p-8 rounded-2xl border border-slate-800 shadow-2xl w-full">
@@ -1809,6 +1810,31 @@ export default function ContentOS() {
                                                         </div>
                                                    ))}
                                               </div>
+
+                                              {/* Aggregate Performance Log Stats */}
+                                              {(analyticsData as any)?.performanceTracking && (
+                                                <div className="mb-10">
+                                                   <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Logged Performance Tracking</h3>
+                                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                        <div className="bg-[#0B1121] p-4 rounded-xl border border-slate-800/50 flex flex-col justify-center">
+                                                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Total Views</span>
+                                                            <div className="text-2xl font-black text-white">{((analyticsData as any).performanceTracking.totalViews).toLocaleString()}</div>
+                                                        </div>
+                                                        <div className="bg-[#0B1121] p-4 rounded-xl border border-slate-800/50 flex flex-col justify-center">
+                                                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Total Likes</span>
+                                                            <div className="text-2xl font-black text-amber-400">{((analyticsData as any).performanceTracking.totalLikes).toLocaleString()}</div>
+                                                        </div>
+                                                        <div className="bg-[#0B1121] p-4 rounded-xl border border-slate-800/50 flex flex-col justify-center">
+                                                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Comments</span>
+                                                            <div className="text-2xl font-black text-[#639922]">{((analyticsData as any).performanceTracking.totalComments).toLocaleString()}</div>
+                                                        </div>
+                                                        <div className="bg-[#0B1121] p-4 rounded-xl border border-slate-800/50 flex flex-col justify-center">
+                                                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2 block">Shares</span>
+                                                            <div className="text-2xl font-black text-indigo-400">{((analyticsData as any).performanceTracking.totalShares).toLocaleString()}</div>
+                                                        </div>
+                                                   </div>
+                                                </div>
+                                              )}
 
                                               <div>
                                                    <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 border-b border-slate-800 pb-2">Exam Readiness Summary</h3>
